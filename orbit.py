@@ -1,10 +1,10 @@
 import os
 import time
-import random
 import json
 import asyncio
-from telethon import TelegramClient, errors
+from telethon import TelegramClient
 from telethon.tl.functions.messages import GetHistoryRequest
+from telethon.tl.functions.channels import LeaveChannelRequest
 from colorama import Fore, Style, init
 import pyfiglet
 
@@ -32,15 +32,14 @@ def load_credentials(session_name):
             return json.load(f)
     return {}
 
-# Function to display banner with full color
+# Function to display banner
 def display_banner():
     banner = pyfiglet.figlet_format("OrbitService")
     print(Fore.RED + banner)
     print(Fore.GREEN + Style.BRIGHT + "Made by @OrbitService\n")
 
-# Function to forward the last saved message
-async def auto_forward(client, delay_after_all_groups, delay_between_groups):
-    # Retrieve the last message from "Saved Messages"
+# Function for Auto Pro Sender
+async def auto_pro_sender(client, repetitions, delay_after_all_groups):
     try:
         history = await client(GetHistoryRequest(
             peer="me",  # 'me' represents the "Saved Messages" chat
@@ -62,22 +61,59 @@ async def auto_forward(client, delay_after_all_groups, delay_between_groups):
         print(Fore.RED + f"Failed to retrieve the last saved message: {e}")
         return
 
-    # Forward the last saved message to all groups
+    for _ in range(repetitions):
+        groups = [d for d in await client.get_dialogs() if d.is_group]
+        for idx, group in enumerate(groups, start=1):
+            try:
+                await client.forward_messages(group.id, last_saved_message.id, "me")
+                print(Fore.GREEN + f"Message successfully forwarded to group: {group.name or group.id}")
+            except Exception as e:
+                print(Fore.RED + f"Error forwarding message to {group.name or group.id}: {e}")
+
+            # Delay between groups
+            if idx % 10 == 0:
+                print(Fore.YELLOW + "Reached 10 groups. Waiting 5 seconds before continuing...")
+                time.sleep(5)
+            else:
+                time.sleep(2)
+
+        print(Fore.YELLOW + f"Waiting {delay_after_all_groups} seconds before the next repetition...")
+        time.sleep(delay_after_all_groups)
+
+# Function for Pro Leave Groups
+async def pro_leave_groups(client):
+    predefined_message = (
+        "For buying OTT platforms, auto-forwarding scripts, or other digital/social media services, "
+        "please contact @OrbitService."
+    )
+
     groups = [d for d in await client.get_dialogs() if d.is_group]
     for group in groups:
         try:
-            await client.forward_messages(group.id, last_saved_message.id, "me")
-            print(Fore.GREEN + f"Message forwarded to group: {group.name or group.id}")
+            print(Fore.BLUE + f"Testing group: {group.name or group.id}")
+            await client.send_message(group.id, predefined_message)
+            print(Fore.GREEN + f"Test message sent successfully to group: {group.name or group.id}")
         except Exception as e:
-            print(Fore.RED + f"Could not forward message to {group.name or group.id}: {e}")
+            print(Fore.RED + f"Failed to send test message to {group.name or group.id}: {e}")
+            # Leave group if unable to send a message
+            try:
+                await client(LeaveChannelRequest(group.id))
+                print(Fore.LIGHTMAGENTA_EX + f"Left group: {group.name or group.id}")
+            except Exception as leave_error:
+                print(Fore.RED + f"Failed to leave group: {group.name or group.id}: {leave_error}")
 
-        # Delay between groups
-        print(Fore.YELLOW + f"Waiting {delay_between_groups} seconds before the next group...")
-        time.sleep(delay_between_groups)
+        # 1-second delay between testing groups
+        time.sleep(1)
 
-    # Delay after completing all groups
-    print(Fore.YELLOW + f"Waiting {delay_after_all_groups} seconds before the next cycle...")
-    time.sleep(delay_after_all_groups)
+# Main function to run tasks concurrently for all logged-in clients
+async def run_tasks(clients, option, repetitions, delay_after_all_groups):
+    tasks = []
+    for client in clients:
+        if option == 1:
+            tasks.append(auto_pro_sender(client, repetitions, delay_after_all_groups))
+        elif option == 2:
+            tasks.append(pro_leave_groups(client))
+    await asyncio.gather(*tasks)
 
 # Main logic
 async def main():
@@ -112,11 +148,25 @@ async def main():
         await client.start(phone=phone_number)
         clients.append(client)
 
-    for client in clients:
-        delay_after_all_groups = float(input(Fore.MAGENTA + "Enter delay (in seconds) after completing all groups: "))
-        delay_between_groups = 3  # Fixed delay of 3 seconds between groups
-        print(Fore.GREEN + "Starting Auto Forward...")
-        await auto_forward(client, delay_after_all_groups, delay_between_groups)
+    print(Fore.MAGENTA + "\nChoose an option:")
+    print(Fore.YELLOW + "1. Auto Pro Sender (Forward last saved message to all groups)")
+    print(Fore.YELLOW + "2. Pro Leave Groups (Send predefined message and leave groups where sending fails)")
+
+    option = int(input(Fore.CYAN + "Enter your choice: "))
+    repetitions, delay_after_all_groups = 0, 0
+
+    if option == 1:
+        repetitions = int(input(Fore.MAGENTA + "How many times should the message be sent to all groups? "))
+        delay_after_all_groups = float(input(Fore.MAGENTA + "Enter delay (in seconds) after all groups are processed: "))
+        print(Fore.GREEN + "Starting Auto Pro Sender...")
+    elif option == 2:
+        print(Fore.GREEN + "Starting Pro Leave Groups...")
+    else:
+        print(Fore.RED + "Invalid option selected.")
+        return
+
+    # Run tasks for all clients simultaneously
+    await run_tasks(clients, option, repetitions, delay_after_all_groups)
 
     # Disconnect all clients
     for client in clients:
