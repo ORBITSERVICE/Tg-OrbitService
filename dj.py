@@ -12,13 +12,13 @@ CREDENTIALS_FOLDER = 'sessions'
 if not os.path.exists(CREDENTIALS_FOLDER):
     os.mkdir(CREDENTIALS_FOLDER)
 
-# Save credentials to file
+# Save credentials
 def save_credentials(session_name, credentials):
     path = os.path.join(CREDENTIALS_FOLDER, f"{session_name}.json")
     with open(path, 'w') as f:
         json.dump(credentials, f)
 
-# Load credentials from file
+# Load credentials
 def load_credentials(session_name):
     path = os.path.join(CREDENTIALS_FOLDER, f"{session_name}.json")
     if os.path.exists(path):
@@ -26,7 +26,7 @@ def load_credentials(session_name):
             return json.load(f)
     return {}
 
-# Log in to Telegram and fetch groups
+# Log in and fetch groups
 async def login_and_fetch_groups(session_name, api_id, api_hash, phone):
     client = TelegramClient(session_name, api_id, api_hash)
     await client.start(phone=phone)
@@ -38,7 +38,7 @@ async def login_and_fetch_groups(session_name, api_id, api_hash, phone):
     groups = [dialog for dialog in await client.get_dialogs() if dialog.is_group]
     return client, groups
 
-# Add members to the target group
+# Add members to target group
 async def add_members(clients, selections, delay_range):
     while selections:
         for client, (source_group, target_group) in selections.items():
@@ -46,23 +46,14 @@ async def add_members(clients, selections, delay_range):
                 continue
 
             try:
-                # Get members from the source group
                 print(f"Fetching members from {source_group.title}...")
                 members = await client.get_participants(source_group)
+                target_members = [user.id for user in await client.get_participants(target_group)]
 
                 for member in members:
-                    if member.bot or member.deleted:
+                    if member.bot or member.deleted or member.id in target_members:
                         continue
 
-                    # Check if the member is already in the target group
-                    try:
-                        await client.get_participant(target_group, member.id)
-                        print(f"{member.username or member.id} is already in {target_group.title}. Skipping.")
-                        continue
-                    except errors.UserNotParticipantError:
-                        pass
-
-                    # Add the member to the target group
                     try:
                         user = InputPeerUser(member.id, member.access_hash)
                         await client(InviteToChannelRequest(target_group, [user]))
@@ -75,7 +66,6 @@ async def add_members(clients, selections, delay_range):
                         print(f"Failed to add {member.username or member.id}: {e}")
                         continue
 
-                    # Delay after each addition
                     delay = random.randint(*delay_range)
                     print(f"Waiting for {delay} seconds...")
                     await asyncio.sleep(delay)
