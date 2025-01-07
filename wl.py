@@ -2,33 +2,29 @@ import os
 import time
 import json
 import asyncio
-import random
-from telethon import TelegramClient, events, errors
-from telethon.errors import SessionPasswordNeededError, UserDeactivatedBanError
+from telethon import TelegramClient, events
 from telethon.tl.functions.messages import GetHistoryRequest
-from colorama import Fore, init
+from telethon.tl.functions.channels import LeaveChannelRequest
+from colorama import Fore, Style, init
 import pyfiglet
 
 # Initialize colorama for colorful outputs
 init(autoreset=True)
 
+# Folder for saving session credentials
 CREDENTIALS_FOLDER = "sessions"
-AUTO_REPLY_MESSAGE = """
-Please Message to @Og_Flame For Deals.
-This is an Automated Message from @Og_Flame Telegram Automation Script.
-"""
 
 # Create the sessions folder if it doesn't exist
 if not os.path.exists(CREDENTIALS_FOLDER):
     os.mkdir(CREDENTIALS_FOLDER)
 
-# Save session credentials
+# Function to save session credentials
 def save_credentials(session_name, credentials):
     path = os.path.join(CREDENTIALS_FOLDER, f"{session_name}.json")
     with open(path, "w") as f:
         json.dump(credentials, f)
 
-# Load session credentials
+# Function to load session credentials
 def load_credentials(session_name):
     path = os.path.join(CREDENTIALS_FOLDER, f"{session_name}.json")
     if os.path.exists(path):
@@ -36,105 +32,112 @@ def load_credentials(session_name):
             return json.load(f)
     return {}
 
-# Display banner
+# Function to display banner
 def display_banner():
-    print(Fore.RED + pyfiglet.figlet_format("Og_Flame"))
-    print(Fore.GREEN + "Made by @Og_Flame\n")
+    banner = pyfiglet.figlet_format("OrbitService")
+    print(Fore.RED + banner)
+    print(Fore.GREEN + Style.BRIGHT + "Made by @OrbitService\n")
 
-# Auto-forward messages to groups
-async def forward_messages_to_groups(client, last_message, session_name, rounds, delay_between_rounds):
-    for round_num in range(1, rounds + 1):
-        print(Fore.YELLOW + f"\nStarting round {round_num} for session {session_name}...")
-        async for dialog in client.iter_dialogs():
-            if dialog.is_group:
-                group = dialog.entity
-                try:
-                    await client.forward_messages(group, last_message)
-                    print(Fore.GREEN + f"Message forwarded to {group.title} using {session_name}")
-                except errors.FloodWaitError as e:
-                    print(Fore.RED + f"Rate limit exceeded. Waiting for {e.seconds} seconds.")
-                    await asyncio.sleep(e.seconds)
-                except Exception as e:
-                    print(Fore.RED + f"Failed to forward message to {group.title}: {e}")
-                delay = random.randint(15, 30)
-                print(f"Waiting {delay} seconds before the next group...")
-                await asyncio.sleep(delay)
-        print(Fore.GREEN + f"Round {round_num} completed for session {session_name}.")
-        if round_num < rounds:
-            print(Fore.CYAN + f"Waiting {delay_between_rounds} seconds before the next round...")
-            await asyncio.sleep(delay_between_rounds)
+# Auto Forward Function
+async def auto_pro_sender(client, repetitions, delay_after_all_groups):
+    try:
+        history = await client(GetHistoryRequest(
+            peer="me",  # 'me' represents the "Saved Messages" chat
+            limit=1,
+            offset_date=None,
+            offset_id=0,
+            max_id=0,
+            min_id=0,
+            add_offset=0,
+            hash=0
+        ))
+        if history.messages:
+            last_saved_message = history.messages[0]
+            print(Fore.CYAN + "Last saved message retrieved. Forwarding...\n")
+        else:
+            print(Fore.RED + "No messages found in Saved Messages.")
+            return
+    except Exception as e:
+        print(Fore.RED + f"Failed to retrieve the last saved message: {e}")
+        return
 
-# Auto-reply to incoming private messages
+    for _ in range(repetitions):
+        groups = [d for d in await client.get_dialogs() if d.is_group]
+        for idx, group in enumerate(groups, start=1):
+            try:
+                await client.forward_messages(group.id, last_saved_message.id, "me")
+                print(Fore.GREEN + f"Message successfully forwarded to group: {group.name or group.id}")
+            except Exception as e:
+                print(Fore.RED + f"Error forwarding message to {group.name or group.id}: {e}")
+
+            # Delay between groups
+            if idx % 10 == 0:
+                print(Fore.YELLOW + "Reached 10 groups. Waiting 5 seconds before continuing...")
+                time.sleep(5)
+            else:
+                time.sleep(2)
+
+        print(Fore.YELLOW + f"Waiting {delay_after_all_groups} seconds before the next repetition...")
+        time.sleep(delay_after_all_groups)
+
+# Auto Reply Function
 async def auto_reply(client, session_name):
     @client.on(events.NewMessage(incoming=True))
     async def handler(event):
         if event.is_private:
+            # Send auto-reply message
+            AUTO_REPLY_MESSAGE = """
+            Please Message to @Og_Flame For Deals 
+            This is an Automated message from @Og_Flame Telegram Automation Script
+            """
             await event.reply(AUTO_REPLY_MESSAGE)
             print(Fore.GREEN + f"Replied to message from {event.sender_id} in session {session_name}")
 
     # Run the client indefinitely to listen for messages
     await client.run_until_disconnected()
 
-# Login and run auto-forward and auto-reply simultaneously
-async def login_and_execute(api_id, api_hash, phone_number, session_name):
-    client = TelegramClient(session_name, api_id, api_hash)
+# Main function to run tasks concurrently for all logged-in clients
+async def run_tasks(clients, option, repetitions, delay_after_all_groups):
+    tasks = []
+    for client in clients:
+        if option == 1:
+            tasks.append(auto_pro_sender(client, repetitions, delay_after_all_groups))
+            tasks.append(auto_reply(client, client.session.name))  # Start auto-reply alongside forwarding
+        elif option == 2:
+            tasks.append(pro_leave_groups(client))
+    await asyncio.gather(*tasks)
 
-    try:
-        await client.start(phone=phone_number)
+# Function for Pro Leave Groups
+async def pro_leave_groups(client):
+    predefined_message = (
+        "For buying OTT platforms, auto-forwarding scripts, or other digital/social media services, "
+        "please contact @OrbitService."
+    )
 
-        if not await client.is_user_authorized():
+    groups = [d for d in await client.get_dialogs() if d.is_group]
+    for group in groups:
+        try:
+            print(Fore.BLUE + f"Testing group: {group.name or group.id}")
+            await client.send_message(group.id, predefined_message)
+            print(Fore.GREEN + f"Test message sent successfully to group: {group.name or group.id}")
+        except Exception as e:
+            print(Fore.RED + f"Failed to send test message to {group.name or group.id}: {e}")
+            # Leave group if unable to send a message
             try:
-                await client.send_code_request(phone_number)
-                print(Fore.YELLOW + f"OTP sent to {phone_number}")
-                otp = input(Fore.CYAN + f"Enter the OTP for {phone_number}: ")
-                await client.sign_in(phone_number, otp)
-            except SessionPasswordNeededError:
-                password = input("Two-factor authentication enabled. Enter your password: ")
-                await client.sign_in(password=password)
+                await client(LeaveChannelRequest(group.id))
+                print(Fore.LIGHTMAGENTA_EX + f"Left group: {group.name or group.id}")
+            except Exception as leave_error:
+                print(Fore.RED + f"Failed to leave group: {group.name or group.id}: {leave_error}")
 
-        print(Fore.GREEN + f"Logged in successfully for session {session_name}")
-
-        # Load the last message from saved messages
-        saved_messages_peer = await client.get_input_entity("me")
-        history = await client(GetHistoryRequest(
-            peer=saved_messages_peer,
-            limit=1,
-            offset_id=0,
-            offset_date=None,
-            add_offset=0,
-            max_id=0,
-            min_id=0,
-            hash=0
-        ))
-
-        if not history.messages:
-            print(Fore.RED + f"No messages found in 'Saved Messages' for session {session_name}")
-            return
-
-        last_message = history.messages[0]
-        rounds = int(input(Fore.MAGENTA + f"How many times to forward messages for {session_name}? "))
-        delay_between_rounds = int(input(Fore.MAGENTA + f"Delay between rounds (seconds) for {session_name}: "))
-
-        # Run both auto-forwarding and auto-reply concurrently
-        tasks = [
-            asyncio.create_task(forward_messages_to_groups(client, last_message, session_name, rounds, delay_between_rounds)),
-            asyncio.create_task(auto_reply(client, session_name))
-        ]
-        await asyncio.gather(*tasks)
-
-    except UserDeactivatedBanError:
-        print(Fore.RED + f"Account {session_name} is banned. Skipping.")
-    except Exception as e:
-        print(Fore.RED + f"Unexpected error in session {session_name}: {e}")
-    finally:
-        await client.disconnect()
+        # 1-second delay between testing groups
+        time.sleep(1)
 
 # Main logic
 async def main():
-    display_banner()
+    display_banner()  # Display the OrbitService banner
 
-    num_sessions = int(input(Fore.MAGENTA + "How many sessions do you want to log in? "))
-    active_sessions = []
+    num_sessions = int(input(Fore.MAGENTA + "How many sessions would you like to log in? "))  # Ask for the number of sessions
+    clients = []
 
     for i in range(1, num_sessions + 1):
         session_name = f"session{i}"
@@ -142,19 +145,50 @@ async def main():
 
         if credentials:
             print(Fore.GREEN + f"\nUsing saved credentials for session {i}.")
-            active_sessions.append((credentials["api_id"], credentials["api_hash"], credentials["phone_number"], session_name))
+            api_id = credentials["api_id"]
+            api_hash = credentials["api_hash"]
+            phone_number = credentials["phone_number"]
         else:
             print(Fore.YELLOW + f"\nEnter details for account {i}:")
-            api_id = int(input(Fore.CYAN + "Enter API ID: "))
-            api_hash = input(Fore.CYAN + "Enter API hash: ")
-            phone_number = input(Fore.CYAN + "Enter phone number (with country code): ")
+            api_id = int(input(Fore.CYAN + f"Enter API ID for session {i}: "))
+            api_hash = input(Fore.CYAN + f"Enter API hash for session {i}: ")
+            phone_number = input(Fore.CYAN + f"Enter phone number for session {i} (with country code): ")
 
-            credentials = {"api_id": api_id, "api_hash": api_hash, "phone_number": phone_number}
+            credentials = {
+                "api_id": api_id,
+                "api_hash": api_hash,
+                "phone_number": phone_number,
+            }
             save_credentials(session_name, credentials)
-            active_sessions.append((api_id, api_hash, phone_number, session_name))
 
-    tasks = [login_and_execute(api_id, api_hash, phone_number, session_name) for api_id, api_hash, phone_number, session_name in active_sessions]
-    await asyncio.gather(*tasks)
+        client = TelegramClient(session_name, api_id, api_hash)
+        await client.start(phone=phone_number)
+        clients.append(client)
 
+    print(Fore.MAGENTA + "\nChoose an option:")
+    print(Fore.YELLOW + "1. Auto Pro Sender (Forward last saved message to all groups)")
+    print(Fore.YELLOW + "2. Pro Leave Groups (Send predefined message and leave groups where sending fails)")
+
+    option = int(input(Fore.CYAN + "Enter your choice: "))
+    repetitions, delay_after_all_groups = 0, 0
+
+    if option == 1:
+        repetitions = int(input(Fore.MAGENTA + "How many times should the message be sent to all groups? "))
+        delay_after_all_groups = float(input(Fore.MAGENTA + "Enter delay (in seconds) after all groups are processed: "))
+        print(Fore.GREEN + "Starting Auto Pro Sender...")
+    elif option == 2:
+        print(Fore.GREEN + "Starting Pro Leave Groups...")
+    else:
+        print(Fore.RED + "Invalid option selected.")
+        return
+
+    # Run tasks for all clients simultaneously
+    await run_tasks(clients, option, repetitions, delay_after_all_groups)
+
+    # Disconnect all clients
+    for client in clients:
+        await client.disconnect()
+
+# Entry point
 if __name__ == "__main__":
     asyncio.run(main())
