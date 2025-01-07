@@ -2,7 +2,8 @@ import os
 import time
 import json
 import asyncio
-from telethon import TelegramClient, events
+import random
+from telethon import TelegramClient, events, errors
 from telethon.tl.functions.messages import GetHistoryRequest
 from telethon.tl.functions.channels import LeaveChannelRequest
 from colorama import Fore, Style, init
@@ -38,7 +39,7 @@ def display_banner():
     print(Fore.RED + banner)
     print(Fore.GREEN + Style.BRIGHT + "Made by @OrbitService\n")
 
-# Auto Forward Function
+# Function for Auto Pro Sender
 async def auto_pro_sender(client, repetitions, delay_after_all_groups):
     try:
         history = await client(GetHistoryRequest(
@@ -73,39 +74,12 @@ async def auto_pro_sender(client, repetitions, delay_after_all_groups):
             # Delay between groups
             if idx % 10 == 0:
                 print(Fore.YELLOW + "Reached 10 groups. Waiting 5 seconds before continuing...")
-                time.sleep(5)
+                await asyncio.sleep(5)
             else:
-                time.sleep(2)
+                await asyncio.sleep(2)
 
         print(Fore.YELLOW + f"Waiting {delay_after_all_groups} seconds before the next repetition...")
-        time.sleep(delay_after_all_groups)
-
-# Auto Reply Function
-async def auto_reply(client, session_name):
-    @client.on(events.NewMessage(incoming=True))
-    async def handler(event):
-        if event.is_private:
-            # Send auto-reply message
-            AUTO_REPLY_MESSAGE = """
-            Please Message to @Og_Flame For Deals 
-            This is an Automated message from @Og_Flame Telegram Automation Script
-            """
-            await event.reply(AUTO_REPLY_MESSAGE)
-            print(Fore.GREEN + f"Replied to message from {event.sender_id} in session {session_name}")
-
-    # Run the client indefinitely to listen for messages
-    await client.run_until_disconnected()
-
-# Main function to run tasks concurrently for all logged-in clients
-async def run_tasks(clients, option, repetitions, delay_after_all_groups):
-    tasks = []
-    for client in clients:
-        if option == 1:
-            tasks.append(auto_pro_sender(client, repetitions, delay_after_all_groups))
-            tasks.append(auto_reply(client, client.session.name))  # Start auto-reply alongside forwarding
-        elif option == 2:
-            tasks.append(pro_leave_groups(client))
-    await asyncio.gather(*tasks)
+        await asyncio.sleep(delay_after_all_groups)
 
 # Function for Pro Leave Groups
 async def pro_leave_groups(client):
@@ -130,13 +104,43 @@ async def pro_leave_groups(client):
                 print(Fore.RED + f"Failed to leave group: {group.name or group.id}: {leave_error}")
 
         # 1-second delay between testing groups
-        time.sleep(1)
+        await asyncio.sleep(1)
+
+# Function for Auto Reply
+async def auto_reply(client, session_name):
+    @client.on(events.NewMessage(incoming=True))
+    async def handler(event):
+        if event.is_private:
+            auto_reply_message = (
+                "Please Message to @Og_Flame For Deals.\n"
+                "This is an Automated message from @Og_Flame Telegram Automation Script."
+            )
+            try:
+                await event.reply(auto_reply_message)
+                print(Fore.GREEN + f"Replied to message from {event.sender_id} in session {session_name}")
+            except Exception as e:
+                print(Fore.RED + f"Failed to reply to {event.sender_id}: {e}")
+
+    # Keep the client active for auto-reply
+    await client.run_until_disconnected()
+
+# Run tasks for all clients
+async def run_tasks(clients, option, repetitions, delay_after_all_groups):
+    tasks = []
+    for client in clients:
+        session_name = client.session.filename
+        if option == 1:
+            tasks.append(auto_pro_sender(client, repetitions, delay_after_all_groups))
+        tasks.append(auto_reply(client, session_name))  # Ensure auto-reply runs for all sessions
+        if option == 2:
+            tasks.append(pro_leave_groups(client))
+    await asyncio.gather(*tasks)
 
 # Main logic
 async def main():
-    display_banner()  # Display the OrbitService banner
+    display_banner()
 
-    num_sessions = int(input(Fore.MAGENTA + "How many sessions would you like to log in? "))  # Ask for the number of sessions
+    num_sessions = int(input(Fore.MAGENTA + "How many sessions would you like to log in? "))
     clients = []
 
     for i in range(1, num_sessions + 1):
@@ -166,8 +170,8 @@ async def main():
         clients.append(client)
 
     print(Fore.MAGENTA + "\nChoose an option:")
-    print(Fore.YELLOW + "1. Auto Pro Sender (Forward last saved message to all groups)")
-    print(Fore.YELLOW + "2. Pro Leave Groups (Send predefined message and leave groups where sending fails)")
+    print(Fore.YELLOW + "1. Auto Pro Sender (Forward last saved message to all groups with auto-reply)")
+    print(Fore.YELLOW + "2. Pro Leave Groups (Send predefined message and leave groups)")
 
     option = int(input(Fore.CYAN + "Enter your choice: "))
     repetitions, delay_after_all_groups = 0, 0
@@ -175,17 +179,12 @@ async def main():
     if option == 1:
         repetitions = int(input(Fore.MAGENTA + "How many times should the message be sent to all groups? "))
         delay_after_all_groups = float(input(Fore.MAGENTA + "Enter delay (in seconds) after all groups are processed: "))
-        print(Fore.GREEN + "Starting Auto Pro Sender...")
-    elif option == 2:
-        print(Fore.GREEN + "Starting Pro Leave Groups...")
-    else:
+    elif option != 2:
         print(Fore.RED + "Invalid option selected.")
         return
 
-    # Run tasks for all clients simultaneously
     await run_tasks(clients, option, repetitions, delay_after_all_groups)
 
-    # Disconnect all clients
     for client in clients:
         await client.disconnect()
 
