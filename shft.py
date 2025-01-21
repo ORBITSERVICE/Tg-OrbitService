@@ -50,9 +50,7 @@ def load_credentials(session_name):
     if os.path.exists(path):
         with open(path, 'r') as f:
             return json.load(f)
-    else:
-        # Return the fixed API ID and API Hash if no credentials are found
-        return {'api_id': API_ID, 'api_hash': API_HASH, 'phone_number': ''}
+    return None
 
 def display_banner():
     print(Fore.RED + pyfiglet.figlet_format("Og_Flame"))
