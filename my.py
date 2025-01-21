@@ -34,13 +34,14 @@ Hey sir.👋 Please message @OrbitService if you're interested in buying our ser
 🔺️ Our proofs: @LegitProofs99 ✅️
 """
 
-# Save session credentials to a file
+API_ID = 21761294
+API_HASH = "7ecfe101cb1ed67865801cb6e1f51e50"
+
 def save_credentials(session_name, credentials):
     path = os.path.join(CREDENTIALS_FOLDER, f"{session_name}.json")
     with open(path, 'w') as f:
         json.dump(credentials, f)
 
-# Load session credentials from file
 def load_credentials(session_name):
     path = os.path.join(CREDENTIALS_FOLDER, f"{session_name}.json")
     if os.path.exists(path):
@@ -99,18 +100,15 @@ async def forward_messages_to_groups(client, last_message, session_name, rounds,
 async def auto_reply(client, session_name):
     @client.on(events.NewMessage(incoming=True))
     async def handler(event):
-        # Check if the message is a direct message
         if event.is_private:
-            # Send auto-reply message
             await event.reply(AUTO_REPLY_MESSAGE)
             print(Fore.GREEN + f"Replied to message from {event.sender_id} in session {session_name}")
             logging.info(f"Replied to message from {event.sender_id} in session {session_name}")
 
-    # Run the client indefinitely to listen for messages
     await client.run_until_disconnected()
 
-async def login_and_execute(api_id, api_hash, phone_number, session_name, option, rounds=None, delay_between_rounds=None):
-    client = TelegramClient(session_name, api_id, api_hash)
+async def login_and_execute(phone_number, session_name, option, rounds=None, delay_between_rounds=None):
+    client = TelegramClient(session_name, API_ID, API_HASH)
 
     try:
         await client.start(phone=phone_number)
@@ -127,7 +125,6 @@ async def login_and_execute(api_id, api_hash, phone_number, session_name, option
 
         print(Fore.GREEN + f"Logged in successfully for session {session_name}")
 
-        # Load the last message from saved messages
         saved_messages_peer = await client.get_input_entity('me')
         history = await client(GetHistoryRequest(
             peer=saved_messages_peer,
@@ -148,15 +145,11 @@ async def login_and_execute(api_id, api_hash, phone_number, session_name, option
         last_message = history.messages[0]
 
         if option == 1:
-            # Start both auto-reply and forward messages concurrently
             tasks = [
                 asyncio.create_task(forward_messages_to_groups(client, last_message, session_name, rounds, delay_between_rounds)),
                 asyncio.create_task(auto_reply(client, session_name))
             ]
             await asyncio.gather(*tasks)
-
-        elif option == 2:
-            await send_and_remove_groups(client, last_message, session_name)
 
     except UserDeactivatedBanError:
         print(Fore.RED + f"Account {session_name} is banned. Skipping this session.")
@@ -167,23 +160,6 @@ async def login_and_execute(api_id, api_hash, phone_number, session_name, option
     finally:
         await client.disconnect()
 
-async def send_and_remove_groups(client, last_message, session_name):
-    async for dialog in client.iter_dialogs():
-        if dialog.is_group:
-            group = dialog.entity
-            try:
-                await client.forward_messages(group, last_message)
-                print(Fore.GREEN + f"Message sent to {group.title} using {session_name}")
-            except Exception as e:
-                print(Fore.RED + f"Failed to send message to {group.title}. Removing group: {str(e)}")
-                logging.info(f"Removing group {group.title} due to failure.")
-                try:
-                    await client(LeaveChannelRequest(group))
-                except Exception as remove_error:
-                    logging.error(f"Failed to remove group {group.title}: {str(remove_error)}")
-            finally:
-                await asyncio.sleep(random.randint(10, 20))
-
 async def main():
     display_banner()
 
@@ -191,49 +167,28 @@ async def main():
         num_sessions = int(input("Enter how many sessions you want to log in: "))
         active_sessions = []
 
-        # Step 1: Login to all accounts one by one
         for i in range(1, num_sessions + 1):
             session_name = f'session{i}'
-            credentials = load_credentials(session_name)
+            phone_number = input(f"Enter phone number for session {i} (with country code): ")
+            active_sessions.append((phone_number, session_name))
 
-            if credentials:
-                print(f"\nUsing saved credentials for session {i}.")
-                active_sessions.append((credentials['api_id'], credentials['api_hash'], credentials['phone_number'], session_name))
-            else:
-                print(f"\nEnter details for account {i}:")
-                api_id = int(input(f"Enter API ID for session {i}: "))
-                api_hash = input(f"Enter API hash for session {i}: ")
-                phone_number = input(f"Enter phone number for session {i} (with country code): ")
-
-                credentials = {'api_id': api_id, 'api_hash': api_hash, 'phone_number': phone_number}
-                save_credentials(session_name, credentials)
-                active_sessions.append((api_id, api_hash, phone_number, session_name))
-
-        # Step 2: Select the action to perform for all accounts
-        print("\nSelect the action to perform for all accounts:")
-        print("1. Forward last saved message to all groups (with rounds and delays)")
-        print("2. Send last saved message to groups and remove failed ones")
+        print("\n1. Forward last saved message to all groups (with rounds and delays)")
         option = int(input("Enter your choice: "))
 
-        # Ask rounds and delay only once for all sessions
         if option == 1:
             rounds = int(input("How many times do you want to forward messages for all sessions? "))
             delay_between_rounds = int(input("Enter delay (in seconds) between rounds for all sessions: "))
 
-        # Step 3: Execute selected action for all sessions
         tasks = []
         for session in active_sessions:
-            api_id, api_hash, phone_number, session_name = session
-            tasks.append(login_and_execute(api_id, api_hash, phone_number, session_name, option, rounds, delay_between_rounds))
+            phone_number, session_name = session
+            tasks.append(login_and_execute(phone_number, session_name, option, rounds, delay_between_rounds))
 
         await asyncio.gather(*tasks)
 
-    except ValueError:
-        print(Fore.RED + "Invalid input. Please enter a valid number.")
-        logging.error("ValueError: Invalid input for number of sessions.")
     except KeyboardInterrupt:
-        print(Fore.YELLOW + "\nProcess interrupted by the user.")
-        logging.info("Process interrupted by the user.")
+        print(Fore.YELLOW + "\nProcess interrupted.")
+        logging.info("Process interrupted.")
     except Exception as e:
         print(Fore.RED + f"Unexpected error in main(): {str(e)}")
         logging.error(f"Unexpected error in main(): {str(e)}")
