@@ -97,8 +97,7 @@ async def forward_messages_to_groups(client, last_message, session_name, rounds,
                     print(Fore.RED + f"Failed to forward message to {group.title}: {str(e)}")
                     logging.error(f"Failed to forward message to {group.title}: {str(e)}")
 
-                # Reduced delay to 5-10 seconds
-                delay = random.randint(5, 10)
+                delay = random.randint(5, 10)  # 5-10 seconds random delay between groups
                 print(f"Waiting for {delay} seconds before forwarding to the next group...")
                 await asyncio.sleep(delay)
 
@@ -174,6 +173,8 @@ async def main():
         option = int(input(Fore.CYAN + "Enter your choice: "))
         rounds, delay_between_rounds = 0, 0
 
+        tasks = []  # List of tasks for each client
+
         if option == 1:
             rounds = int(input(Fore.MAGENTA + "How many rounds should the message be sent? "))
             delay_between_rounds = int(input(Fore.MAGENTA + "Enter delay (in seconds) between rounds: "))
@@ -182,13 +183,18 @@ async def main():
             for client in clients:
                 last_message = await get_last_saved_message(client)
                 if last_message:
-                    await forward_messages_to_groups(client, last_message, client.session.filename, rounds, delay_between_rounds)
+                    tasks.append(forward_messages_to_groups(client, last_message, client.session.filename, rounds, delay_between_rounds))
+
         elif option == 2:
             print(Fore.GREEN + "Starting Auto Reply...")
             for client in clients:
-                await auto_reply(client)
+                tasks.append(auto_reply(client, client.session.filename))
+
         else:
             print(Fore.RED + "Invalid option selected.")
+
+        # Run all tasks concurrently for all clients
+        await asyncio.gather(*tasks)
 
         for client in clients:
             await client.disconnect()
