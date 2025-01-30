@@ -25,10 +25,16 @@ logging.basicConfig(
 
 # Updated Auto-Reply Message
 AUTO_REPLY_MESSAGE = """
-🤠 Please message @OrbitService for inquiries.
-❤️ STORE: @ORBITSHOPPY  
-❤️ PROOFS: @LEGITPROOFS99  
-😎 DM: @ORBITSERVICE for deals
+🤠𝗣𝗹𝗲𝗮𝘀𝗲 𝗠𝗲𝘀𝘀𝗮𝗴𝗲 𝗧𝗼 @OrbitService ..
+
+🤠𝗣𝗹𝗲𝗮𝘀𝗲 𝗠𝗲𝘀𝘀𝗮𝗴𝗲 𝗧𝗼 @OrbitService ..
+
+🤠𝗣𝗹𝗲𝗮𝘀𝗲 𝗠𝗲𝘀𝘀𝗮𝗴𝗲 𝗧𝗼 @OrbitService ..
+
+❤️𝗦𝗧𝗢𝗥𝗘    : @ORBITSHOPPY  
+❤️𝗣𝗥𝗢𝗢𝗙𝗦 : @LEGITPROOFS99  
+
+😎DM : @ORBITSERVICE ғᴏʀ ᴅᴇᴀʟs
 """
 
 def display_banner():
@@ -97,7 +103,7 @@ async def forward_messages_to_groups(client, last_message, session_name, rounds,
                     print(Fore.RED + f"Failed to forward message to {group.title}: {str(e)}")
                     logging.error(f"Failed to forward message to {group.title}: {str(e)}")
 
-                delay = random.randint(5, 10)  # 5-10 seconds random delay between groups
+                delay = random.randint(5, 10)  # Random delay between 5 to 10 seconds
                 print(f"Waiting for {delay} seconds before forwarding to the next group...")
                 await asyncio.sleep(delay)
 
@@ -125,8 +131,6 @@ async def auto_reply(client, session_name):
             except Exception as e:
                 print(Fore.RED + f"Failed to reply to {event.sender_id}: {str(e)}")
                 logging.error(f"Failed to reply to {event.sender_id}: {str(e)}")
-
-    await client.run_until_disconnected()
 
 async def main():
     """Main function to handle user input and execute the script."""
@@ -173,28 +177,28 @@ async def main():
         option = int(input(Fore.CYAN + "Enter your choice: "))
         rounds, delay_between_rounds = 0, 0
 
-        tasks = []  # List of tasks for each client
-
         if option == 1:
             rounds = int(input(Fore.MAGENTA + "How many rounds should the message be sent? "))
             delay_between_rounds = int(input(Fore.MAGENTA + "Enter delay (in seconds) between rounds: "))
             print(Fore.GREEN + "Starting Auto Forwarding...")
 
+            # Run both auto-forwarding and auto-reply concurrently
+            tasks = []
             for client in clients:
                 last_message = await get_last_saved_message(client)
                 if last_message:
                     tasks.append(forward_messages_to_groups(client, last_message, client.session.filename, rounds, delay_between_rounds))
+                    tasks.append(auto_reply(client, client.session.filename))  # Start auto-reply concurrently
 
+            await asyncio.gather(*tasks)
         elif option == 2:
             print(Fore.GREEN + "Starting Auto Reply...")
+            tasks = []
             for client in clients:
                 tasks.append(auto_reply(client, client.session.filename))
-
+            await asyncio.gather(*tasks)
         else:
             print(Fore.RED + "Invalid option selected.")
-
-        # Run all tasks concurrently for all clients
-        await asyncio.gather(*tasks)
 
         for client in clients:
             await client.disconnect()
