@@ -73,6 +73,7 @@ async def forward_messages_to_groups(client, last_message, session_name, rounds,
     """Forward the last saved message to all groups."""
     try:
         group_dialogs = [dialog for dialog in await client.get_dialogs() if dialog.is_group]
+        print(Fore.CYAN + f"Found {len(group_dialogs)} groups for session {session_name}")
 
         if not group_dialogs:
             logging.warning(f"No groups found for session {session_name}.")
@@ -89,8 +90,11 @@ async def forward_messages_to_groups(client, last_message, session_name, rounds,
                 except errors.FloodWaitError as e:
                     print(Fore.RED + f"Rate limit exceeded. Waiting for {e.seconds} seconds.")
                     await asyncio.sleep(e.seconds)
-                    continue
+                    # Retry forwarding after waiting
+                    await client.forward_messages(group, last_message)
+                    print(Fore.GREEN + f"Message forwarded to {group.title} after waiting.")
                 except Exception as e:
+                    print(Fore.RED + f"Failed to forward message to {group.title}: {str(e)}")
                     logging.error(f"Failed to forward message to {group.title}: {str(e)}")
 
                 delay = random.randint(15, 30)  # Updated delay to 15-30 seconds
