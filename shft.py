@@ -4,7 +4,7 @@ import json
 import random
 import logging
 from telethon import TelegramClient, events, errors
-from telethon.errors import SessionPasswordNeededError, UserDeactivatedBanError
+from telethon.errors import UserDeactivatedBanError, FloodWaitError
 from telethon.tl.functions.messages import GetHistoryRequest
 from colorama import init, Fore
 import pyfiglet
@@ -25,10 +25,11 @@ logging.basicConfig(
 
 # Updated Auto-Reply Message
 AUTO_REPLY_MESSAGE = """
-🤠𝗣𝗹𝗲𝗮𝗦𝗲 𝗠𝗲𝘀𝘀𝗮𝗴𝗲 𝗧𝗼 @OrbitService ..
-❤️𝗦𝗧𝗢𝗥𝗘    : @ORBITSHOPPY  
-❤️𝗣𝗥𝗢𝗢𝗙𝗦 : @LEGITPROOFS99  
-😎DM : @ORBITSERVICE ғᴏʀ ᴅᴇᴀʟs
+Hey sir.👋 Please message @OrbitService if you're interested in buying our service. 
+
+➡️ This is just a promotional working ID. Thanks for visiting us! 🙏  
+🔺️ Our channel: @OrbitShoppy ✅️  
+🔺️ Our proofs: @LegitProofs99 ✅️
 """
 
 def display_banner():
@@ -81,25 +82,15 @@ async def forward_messages_to_groups(client, last_message, session_name, rounds,
 
         for round_num in range(1, rounds + 1):
             print(Fore.YELLOW + f"\nStarting round {round_num} for session {session_name}...")
+            
+            # Process all groups concurrently in each round
+            forward_tasks = []
             for dialog in group_dialogs:
                 group = dialog.entity
-                try:
-                    await client.forward_messages(group, last_message)
-                    print(Fore.GREEN + f"Message forwarded to {group.title} using {session_name}")
-                    logging.info(f"Message forwarded to {group.title} using {session_name}")
-                except errors.FloodWaitError as e:
-                    print(Fore.RED + f"Rate limit exceeded. Waiting for {e.seconds} seconds.")
-                    await asyncio.sleep(e.seconds)
-                    # Retry forwarding after waiting
-                    await client.forward_messages(group, last_message)
-                    print(Fore.GREEN + f"Message forwarded to {group.title} after waiting.")
-                except Exception as e:
-                    print(Fore.RED + f"Failed to forward message to {group.title}: {str(e)}")
-                    logging.error(f"Failed to forward message to {group.title}: {str(e)}")
-
-                delay = random.randint(15, 30)  # Updated delay to 15-30 seconds
-                print(f"Waiting for {delay} seconds before forwarding to the next group...")
-                await asyncio.sleep(delay)
+                forward_tasks.append(forward_message(client, group, last_message, session_name))
+            
+            # Wait for all forwards to complete
+            await asyncio.gather(*forward_tasks)
 
             print(Fore.GREEN + f"Round {round_num} completed for session {session_name}.")
             if round_num < rounds:
@@ -107,6 +98,21 @@ async def forward_messages_to_groups(client, last_message, session_name, rounds,
                 await asyncio.sleep(delay_between_rounds)
     except Exception as e:
         logging.error(f"Unexpected error in forward_messages_to_groups: {str(e)}")
+
+async def forward_message(client, group, last_message, session_name):
+    """Helper function to forward a single message to a group."""
+    try:
+        await client.forward_messages(group, last_message)
+        print(Fore.GREEN + f"Message forwarded to {group.title} using {session_name}")
+        logging.info(f"Message forwarded to {group.title} using {session_name}")
+    except FloodWaitError as e:
+        print(Fore.RED + f"Rate limit exceeded. Waiting for {e.seconds} seconds.")
+        await asyncio.sleep(e.seconds)
+        await client.forward_messages(group, last_message)
+        print(Fore.GREEN + f"Message forwarded to {group.title} after waiting.")
+    except Exception as e:
+        print(Fore.RED + f"Failed to forward message to {group.title}: {str(e)}")
+        logging.error(f"Failed to forward message to {group.title}: {str(e)}")
 
 async def auto_reply(client, session_name):
     """Auto-reply to private messages."""
@@ -116,7 +122,7 @@ async def auto_reply(client, session_name):
             try:
                 await event.reply(AUTO_REPLY_MESSAGE)
                 logging.info(f"Replied to {event.sender_id} in session {session_name}")
-            except errors.FloodWaitError as e:
+            except FloodWaitError as e:
                 await asyncio.sleep(e.seconds)
             except Exception as e:
                 logging.error(f"Failed to reply to {event.sender_id}: {str(e)}")
@@ -131,7 +137,6 @@ async def main():
             print(Fore.RED + "Number of sessions must be greater than 0.")
             return
 
-        clients = []
         valid_clients = []
 
         for i in range(1, num_sessions + 1):
@@ -183,16 +188,12 @@ async def main():
         if option == 1:
             rounds = int(input(Fore.MAGENTA + "How many rounds should the message be sent? "))
             delay_between_rounds = int(input(Fore.MAGENTA + "Enter delay (in seconds) between rounds: "))
-            print(Fore.GREEN + "Starting Auto Forwarding...")
 
-            tasks = []
-            for client in valid_clients:
-                last_message = await get_last_saved_message(client)
-                if last_message:
-                    tasks.append(forward_messages_to_groups(client, last_message, client.session.filename, rounds, delay_between_rounds))
-                    tasks.append(auto_reply(client, client.session.filename))
+            tasks = [forward_messages_to_groups(client, await get_last_saved_message(client), client.session.filename, rounds, delay_between_rounds)
+                     for client in valid_clients]
 
             await asyncio.gather(*tasks)
+
         elif option == 2:
             print(Fore.GREEN + "Starting Auto Reply...")
             tasks = [auto_reply(client, client.session.filename) for client in valid_clients]
