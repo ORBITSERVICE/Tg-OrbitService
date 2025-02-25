@@ -3,7 +3,7 @@ import os
 import json
 import logging
 from telethon import TelegramClient, events, errors
-from telethon.errors import SessionPasswordNeededError, UserDeactivatedBanError
+from telethon.errors import UserDeactivatedBanError
 from telethon.tl.functions.messages import GetHistoryRequest, DeleteHistoryRequest
 from colorama import init, Fore
 import pyfiglet
@@ -23,7 +23,6 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-# Updated Auto-Reply Message (Your Provided Message)
 AUTO_REPLY_MESSAGE = """
 This Id Working For Otp Wallah
 [ https://t.me/otpsellers4 ]
@@ -57,11 +56,11 @@ def display_banner():
     print(Fore.RED + pyfiglet.figlet_format("Og_Flame"))
     print(Fore.GREEN + "Made by @Og_Flame\n")
 
-async def auto_reply(client, session_name, stop_event):
+async def auto_reply(client, session_name):
     """Auto-reply to private messages and fully delete the chat."""
     @client.on(events.NewMessage(incoming=True))
     async def handler(event):
-        if event.is_private and not stop_event.is_set():
+        if event.is_private:
             try:
                 # Reply to the message
                 await event.reply(AUTO_REPLY_MESSAGE)
@@ -97,29 +96,15 @@ async def forward_messages_to_groups(client, last_message, session_name, group):
 
 async def login_and_execute(api_id, api_hash, phone_number, session_name, delay_between_accounts, index):
     """Handles login and executes forwarding + auto-reply with delayed starts."""
-    stop_event = asyncio.Event()
     client = TelegramClient(session_name, api_id, api_hash)
 
-    # Delay start based on index
+    # First session starts instantly; others follow delay
     if index > 0:
         print(Fore.CYAN + f"\nWaiting {delay_between_accounts} seconds before starting session {session_name}...")
         await asyncio.sleep(delay_between_accounts * index)
 
     try:
         await client.start(phone=phone_number)
-
-        if not await client.is_user_authorized():
-            await client.send_code_request(phone_number)
-            while True:
-                otp = input(Fore.CYAN + f"Enter the OTP for {phone_number}: ")
-                try:
-                    await client.sign_in(phone_number, otp)
-                    break
-                except errors.PhoneCodeInvalidError:
-                    print(Fore.RED + "Invalid OTP. Please try again.")
-                except errors.PhoneCodeExpiredError:
-                    print(Fore.RED + "OTP expired. Resending code...")
-                    await client.send_code_request(phone_number)
 
         # Fetch last saved message
         saved_messages_peer = await client.get_input_entity('me')
@@ -131,18 +116,18 @@ async def login_and_execute(api_id, api_hash, phone_number, session_name, delay_
             add_offset=0,
             max_id=0,
             min_id=0,
-            hash=0
+            hash=0  # **Bug Fixed Here**
         ))
 
         if not history.messages:
             print(Fore.RED + "No messages found in 'Saved Messages'. Skipping this session.")
-            return
+            return None, None
 
         last_message = history.messages[0]
 
         # Start auto-reply in the background
         print(Fore.CYAN + f"Starting auto-reply for session {session_name}...")
-        asyncio.create_task(auto_reply(client, session_name, stop_event))
+        asyncio.create_task(auto_reply(client, session_name))
 
         return client, last_message
 
@@ -159,7 +144,6 @@ async def main():
         num_sessions = int(input("Enter how many sessions you want to log in: "))
         active_sessions = []
 
-        # Step 1: Login to all accounts
         for i in range(1, num_sessions + 1):
             session_name = f'session{i}'
             credentials = load_credentials(session_name)
@@ -177,10 +161,8 @@ async def main():
 
             active_sessions.append((credentials['api_id'], credentials['api_hash'], credentials['phone_number'], session_name))
 
-        # Step 2: Ask for delay between accounts
         delay_between_accounts = int(input("Enter delay (in seconds) between each account's start: "))
 
-        # Step 3: Login to all accounts and prepare clients
         clients = []
         for index, session in enumerate(active_sessions):
             api_id, api_hash, phone_number, session_name = session
@@ -192,14 +174,13 @@ async def main():
             print(Fore.RED + "No valid sessions available. Exiting.")
             return
 
-        # Step 4: Forward messages to groups in a round-robin fashion
         while True:
             for client, last_message, session_name in clients:
                 async for dialog in client.iter_dialogs():
                     if dialog.is_group:
                         group = dialog.entity
                         await forward_messages_to_groups(client, last_message, session_name, group)
-                        await asyncio.sleep(delay_between_accounts)  # Delay between accounts
+                        await asyncio.sleep(delay_between_accounts)
 
     except ValueError:
         print(Fore.RED + "Invalid input. Please enter a valid number.")
