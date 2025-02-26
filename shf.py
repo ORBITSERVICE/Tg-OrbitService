@@ -1,6 +1,7 @@
 import asyncio
 import os
 import json
+import random
 import logging
 from telethon import TelegramClient, events
 from telethon.errors import UserDeactivatedBanError, FloodWaitError
@@ -72,7 +73,7 @@ async def get_last_saved_message(client):
         return None
 
 async def forward_messages_to_groups(client, last_message, session_name, rounds, delay_between_rounds):
-    """Forward the last saved message to all groups."""
+    """Forward the last saved message to all groups with a random delay (15-30 seconds) between groups."""
     try:
         # Fetch all dialogs and filter only groups
         dialogs = await client.get_dialogs()
@@ -87,7 +88,7 @@ async def forward_messages_to_groups(client, last_message, session_name, rounds,
         for round_num in range(1, rounds + 1):
             print(Fore.YELLOW + f"\nStarting round {round_num} for session {session_name}...")
 
-            # Forward message to all groups
+            # Forward message to all groups with a random delay (15-30 seconds) between groups
             for dialog in group_dialogs:
                 group = dialog.entity
                 try:
@@ -102,6 +103,11 @@ async def forward_messages_to_groups(client, last_message, session_name, rounds,
                 except Exception as e:
                     print(Fore.RED + f"Failed to forward message to {group.title}: {str(e)}")
                     logging.error(f"Failed to forward message to {group.title}: {str(e)}")
+
+                # Add random delay (15-30 seconds) between groups
+                random_delay = random.randint(15, 30)
+                print(Fore.CYAN + f"Waiting for {random_delay} seconds before the next group...")
+                await asyncio.sleep(random_delay)
 
             print(Fore.GREEN + f"Round {round_num} completed for session {session_name}.")
             if round_num < rounds:
