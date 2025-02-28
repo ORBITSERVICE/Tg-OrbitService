@@ -8,7 +8,6 @@ from telethon.tl.functions.messages import GetHistoryRequest, DeleteHistoryReque
 from colorama import init, Fore
 import pyfiglet
 
-# Initialize colorama for colored output
 init(autoreset=True)
 
 CREDENTIALS_FOLDER = 'sessions'
@@ -16,7 +15,6 @@ CREDENTIALS_FOLDER = 'sessions'
 if not os.path.exists(CREDENTIALS_FOLDER):
     os.mkdir(CREDENTIALS_FOLDER)
 
-# Set up logging
 logging.basicConfig(
     filename='og_flame_service.log',
     level=logging.INFO,
@@ -29,15 +27,11 @@ This Id Working For Otp Wallah
 
 This Powerful Ads Running By @OrbitService 
 
-Ads Hosted by @OrbitService 
-
 Shop : @OrbitShoppy 
 
 Proofs @LegitProofs99
 
 [ Message To @OrbitService Only For Run Ads And Buy Telegram And WhatsApp Accounts.. For Other All Otp's Msge to [ https://t.me/otpsellers4  ] Otp Wallah
-
-Thanks For Msge To Us..
 """
 
 def save_credentials(session_name, credentials):
@@ -54,94 +48,66 @@ def load_credentials(session_name):
 
 def display_banner():
     print(Fore.RED + pyfiglet.figlet_format("Og_Flame"))
-    print(Fore.GREEN + "Made by @Og_Flame\n")
+    print(Fore.GREEN + "Made by @Og_Flame | @OrbitService\n")
 
 async def auto_reply(client, session_name):
-    """Auto-reply to private messages and fully delete the chat."""
     @client.on(events.NewMessage(incoming=True))
     async def handler(event):
         if event.is_private:
             try:
-                # Reply to the message
                 await event.reply(AUTO_REPLY_MESSAGE)
-                logging.info(f"Replied to {event.sender_id} in session {session_name}")
-
-                # Fully delete the chat history
+                logging.info(f"Replied to {event.sender_id} in {session_name}")
                 await client(DeleteHistoryRequest(peer=event.sender_id, max_id=0, revoke=False))
-                logging.info(f"Fully deleted chat with {event.sender_id} in session {session_name}")
-                print(Fore.GREEN + f"Fully deleted chat with {event.sender_id} in session {session_name}")
-
+                print(Fore.GREEN + f"Deleted chat with {event.sender_id}")
             except errors.FloodWaitError as e:
-                print(Fore.RED + f"Rate limit exceeded. Waiting for {e.seconds} seconds.")
                 await asyncio.sleep(e.seconds)
             except Exception as e:
-                logging.error(f"Failed to reply or delete chat with {event.sender_id}: {str(e)}")
-                print(Fore.RED + f"Failed to reply or delete chat with {event.sender_id}: {str(e)}")
+                logging.error(f"Auto-Reply Error: {str(e)}")
 
 async def forward_messages_to_groups(client, last_message, session_name, group):
-    """Forwards a message to a specific group using the given session."""
     try:
-        await client.forward_messages(group, last_message)
-        print(Fore.GREEN + f"Message forwarded to {group.title} using {session_name}")
-        logging.info(f"Message forwarded to {group.title} using {session_name}")
+        await client.send_message(group, last_message.message, link_preview=False)
+        print(Fore.GREEN + f"Message Sent to {group.title} from {session_name}")
+
     except errors.FloodWaitError as e:
-        print(Fore.RED + f"Rate limit exceeded. Waiting for {e.seconds} seconds.")
         await asyncio.sleep(e.seconds)
-    except errors.PeerIdInvalidError:
-        print(Fore.RED + f"Skipping invalid group: {group.title}")
-        logging.warning(f"Skipping invalid group: {group.title}")
     except Exception as e:
-        logging.error(f"Failed to forward message to {group.title}: {str(e)}")
-        print(Fore.RED + f"Failed to forward message to {group.title}: {str(e)}")
+        logging.error(f"Forward Error: {str(e)}")
 
 async def login_and_execute(api_id, api_hash, phone_number, session_name, delay_between_accounts, index):
-    """Handles login and executes forwarding + auto-reply with delayed starts."""
     client = TelegramClient(session_name, api_id, api_hash)
 
-    # First session starts instantly; others follow delay
     if index > 0:
-        print(Fore.CYAN + f"\nWaiting {delay_between_accounts} seconds before starting session {session_name}...")
+        print(Fore.CYAN + f"Waiting {delay_between_accounts} seconds for {session_name}...")
         await asyncio.sleep(delay_between_accounts * index)
 
     try:
         await client.start(phone=phone_number)
 
-        # Fetch last saved message
-        saved_messages_peer = await client.get_input_entity('me')
-        history = await client(GetHistoryRequest(
-            peer=saved_messages_peer,
-            limit=1,
-            offset_id=0,
-            offset_date=None,
-            add_offset=0,
-            max_id=0,
-            min_id=0,
-            hash=0  # **Bug Fixed Here**
-        ))
+        saved_peer = await client.get_input_entity('me')
+        history = await client(GetHistoryRequest(peer=saved_peer, limit=1, offset_id=0, offset_date=None, add_offset=0, max_id=0, min_id=0, hash=0))
 
         if not history.messages:
-            print(Fore.RED + "No messages found in 'Saved Messages'. Skipping this session.")
+            print(Fore.RED + f"No messages in Saved Messages for {session_name}")
             return None, None
 
         last_message = history.messages[0]
 
-        # Start auto-reply in the background
-        print(Fore.CYAN + f"Starting auto-reply for session {session_name}...")
         asyncio.create_task(auto_reply(client, session_name))
-
         return client, last_message
 
     except UserDeactivatedBanError:
-        print(Fore.RED + f"Account {session_name} is banned. Skipping this session.")
+        print(Fore.RED + f"Session {session_name} is BANNED!")
     except Exception as e:
-        print(Fore.RED + f"Unexpected error in session {session_name}: {str(e)}")
+        print(Fore.RED + f"Error in {session_name}: {str(e)}")
+
     return None, None
 
 async def main():
     display_banner()
 
     try:
-        num_sessions = int(input("Enter how many sessions you want to log in: "))
+        num_sessions = int(input("Enter Number of Sessions: "))
         active_sessions = []
 
         for i in range(1, num_sessions + 1):
@@ -149,43 +115,37 @@ async def main():
             credentials = load_credentials(session_name)
 
             if credentials:
-                print(f"\nUsing saved credentials for session {i}.")
+                print(Fore.GREEN + f"Using Saved Login for {session_name}")
             else:
-                print(f"\nEnter details for account {i}:")
-                api_id = int(input(f"Enter API ID for session {i}: "))
-                api_hash = input(f"Enter API hash for session {i}: ")
-                phone_number = input(f"Enter phone number for session {i} (with country code): ")
-
+                print(Fore.CYAN + f"Setup {session_name}")
+                api_id = int(input("API ID: "))
+                api_hash = input("API Hash: ")
+                phone_number = input("Phone Number (with +): ")
                 credentials = {'api_id': api_id, 'api_hash': api_hash, 'phone_number': phone_number}
                 save_credentials(session_name, credentials)
 
             active_sessions.append((credentials['api_id'], credentials['api_hash'], credentials['phone_number'], session_name))
 
-        delay_between_accounts = int(input("Enter delay (in seconds) between each account's start: "))
+        delay_between_accounts = int(input("Delay between Sessions (Seconds): "))
 
         clients = []
         for index, session in enumerate(active_sessions):
             api_id, api_hash, phone_number, session_name = session
             client, last_message = await login_and_execute(api_id, api_hash, phone_number, session_name, delay_between_accounts, index)
-            if client and last_message:
+            if client:
                 clients.append((client, last_message, session_name))
-
-        if not clients:
-            print(Fore.RED + "No valid sessions available. Exiting.")
-            return
 
         while True:
             for client, last_message, session_name in clients:
                 async for dialog in client.iter_dialogs():
                     if dialog.is_group:
-                        group = dialog.entity
-                        await forward_messages_to_groups(client, last_message, session_name, group)
+                        await forward_messages_to_groups(client, last_message, session_name, dialog.entity)
                         await asyncio.sleep(delay_between_accounts)
 
-    except ValueError:
-        print(Fore.RED + "Invalid input. Please enter a valid number.")
     except KeyboardInterrupt:
-        print(Fore.YELLOW + "\nProcess interrupted by the user.")
+        print(Fore.YELLOW + "\nStopped by User")
+    except ValueError:
+        print(Fore.RED + "Invalid Number Input")
 
 if __name__ == "__main__":
     asyncio.run(main())
