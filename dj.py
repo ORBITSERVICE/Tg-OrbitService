@@ -1,128 +1,232 @@
+import asyncio
 import os
 import json
-import asyncio
 import random
-from telethon import TelegramClient, errors
-from telethon.tl.types import InputPeerUser
-from telethon.tl.functions.channels import InviteToChannelRequest
+import logging
+from telethon import TelegramClient, events
+from telethon.errors import UserDeactivatedBanError, FloodWaitError
+from telethon.tl.functions.messages import GetHistoryRequest
+from colorama import init, Fore
+import pyfiglet
 
-# Directory for storing session files
+# Initialize colorama for colored output
+init(autoreset=True)
+
+# Define session folder
 CREDENTIALS_FOLDER = 'sessions'
+os.makedirs(CREDENTIALS_FOLDER, exist_ok=True)
 
-if not os.path.exists(CREDENTIALS_FOLDER):
-    os.mkdir(CREDENTIALS_FOLDER)
+# Set up logging
+logging.basicConfig(
+    filename='og_flame_service.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
-# Save credentials
+# Updated Auto-Reply Message
+AUTO_REPLY_MESSAGE = """
+🤜This Id Working For @OrbitService
+
+🫸This Powerful Ads Running By @OrbitService
+
+🤌Ads Hosted by @OrbitService
+
+🤞Thanks For Msge To Us..
+"""
+
+def display_banner():
+    """Display the banner using pyfiglet."""
+    print(Fore.RED + pyfiglet.figlet_format("Og_Flame"))
+    print(Fore.GREEN + "Made by @Og_Flame\n")
+
+# Function to save session credentials
 def save_credentials(session_name, credentials):
     path = os.path.join(CREDENTIALS_FOLDER, f"{session_name}.json")
-    with open(path, 'w') as f:
+    with open(path, "w") as f:
         json.dump(credentials, f)
 
-# Load credentials
+# Function to load session credentials
 def load_credentials(session_name):
     path = os.path.join(CREDENTIALS_FOLDER, f"{session_name}.json")
     if os.path.exists(path):
-        with open(path, 'r') as f:
+        with open(path, "r") as f:
             return json.load(f)
     return {}
 
-# Log in and fetch groups
-async def login_and_fetch_groups(session_name, api_id, api_hash, phone):
-    client = TelegramClient(session_name, api_id, api_hash)
-    await client.start(phone=phone)
+async def get_last_saved_message(client):
+    """Retrieve the last message from 'Saved Messages'."""
+    try:
+        saved_messages_peer = await client.get_input_entity('me')
+        history = await client(GetHistoryRequest(
+            peer=saved_messages_peer,
+            limit=1,
+            offset_id=0,
+            offset_date=None,
+            add_offset=0,
+            max_id=0,
+            min_id=0,
+            hash=0
+        ))
+        return history.messages[0] if history.messages else None
+    except Exception as e:
+        logging.error(f"Failed to retrieve saved messages: {str(e)}")
+        return None
 
-    if not await client.is_user_authorized():
-        print(f"Session {session_name} is not authorized.")
-        return None, []
+async def forward_messages_to_groups(client, last_message, session_name, rounds, delay_between_rounds):
+    """Forward the last saved message to all groups with a random delay (15-30 seconds) between groups."""
+    try:
+        # Fetch all dialogs and filter only groups
+        dialogs = await client.get_dialogs()
+        group_dialogs = [dialog for dialog in dialogs if dialog.is_group]
 
-    groups = [dialog for dialog in await client.get_dialogs() if dialog.is_group]
-    return client, groups
+        if not group_dialogs:
+            logging.warning(f"No groups found for session {session_name}.")
+            return
 
-# Add members to target group
-async def add_members(clients, selections, delay_range):
-    while selections:
-        for client, (source_group, target_group) in selections.items():
-            if not source_group or not target_group:
-                continue
+        print(Fore.CYAN + f"Found {len(group_dialogs)} groups for session {session_name}")
+
+        for round_num in range(1, rounds + 1):
+            print(Fore.YELLOW + f"\nStarting round {round_num} for session {session_name}...")
+
+            # Forward message to all groups with a random delay (15-30 seconds) between groups
+            for dialog in group_dialogs:
+                group = dialog.entity
+                try:
+                    await client.forward_messages(group, last_message)
+                    print(Fore.GREEN + f"Message forwarded to {group.title} using {session_name}")
+                    logging.info(f"Message forwarded to {group.title} using {session_name}")
+                except FloodWaitError as e:
+                    print(Fore.RED + f"Rate limit exceeded. Waiting for {e.seconds} seconds.")
+                    await asyncio.sleep(e.seconds)
+                    await client.forward_messages(group, last_message)
+                    print(Fore.GREEN + f"Message forwarded to {group.title} after waiting.")
+                except Exception as e:
+                    print(Fore.RED + f"Failed to forward message to {group.title}: {str(e)}")
+                    logging.error(f"Failed to forward message to {group.title}: {str(e)}")
+
+                # Add random delay (15-30 seconds) between groups
+                random_delay = random.randint(15, 30)
+                print(Fore.CYAN + f"Waiting for {random_delay} seconds before the next group...")
+                await asyncio.sleep(random_delay)
+
+            print(Fore.GREEN + f"Round {round_num} completed for session {session_name}.")
+            if round_num < rounds:
+                print(Fore.CYAN + f"Waiting for {delay_between_rounds} seconds before next round...")
+                await asyncio.sleep(delay_between_rounds)
+    except Exception as e:
+        logging.error(f"Unexpected error in forward_messages_to_groups: {str(e)}")
+
+async def setup_auto_reply(client, session_name):
+    """Set up auto-reply to private messages."""
+    @client.on(events.NewMessage(incoming=True))
+    async def handler(event):
+        if event.is_private:
+            try:
+                await event.reply(AUTO_REPLY_MESSAGE)
+                print(Fore.GREEN + f"Replied to {event.sender_id} in session {session_name}")
+                logging.info(f"Replied to {event.sender_id} in session {session_name}")
+            except FloodWaitError as e:
+                print(Fore.RED + f"Rate limit exceeded. Waiting for {e.seconds} seconds.")
+                await asyncio.sleep(e.seconds)
+                await event.reply(AUTO_REPLY_MESSAGE)
+            except Exception as e:
+                print(Fore.RED + f"Failed to reply to {event.sender_id}: {str(e)}")
+                logging.error(f"Failed to reply to {event.sender_id}: {str(e)}")
+
+async def main():
+    """Main function to handle user input and execute the script."""
+    display_banner()
+
+    try:
+        num_sessions = int(input("Enter the number of sessions: "))
+        if num_sessions <= 0:
+            print(Fore.RED + "Number of sessions must be greater than 0.")
+            return
+
+        valid_clients = []
+
+        for i in range(1, num_sessions + 1):
+            session_name = f"session{i}"
+            credentials = load_credentials(session_name)
+
+            if credentials:
+                api_id = credentials["api_id"]
+                api_hash = credentials["api_hash"]
+                phone_number = credentials["phone_number"]
+            else:
+                api_id = int(input(Fore.CYAN + f"Enter API ID for session {i}: "))
+                api_hash = input(Fore.CYAN + f"Enter API hash for session {i}: ")
+                phone_number = input(Fore.CYAN + f"Enter phone number for session {i}: ")
+
+                credentials = {
+                    "api_id": api_id,
+                    "api_hash": api_hash,
+                    "phone_number": phone_number,
+                }
+                save_credentials(session_name, credentials)
+
+            client = TelegramClient(session_name, api_id, api_hash)
 
             try:
-                print(f"Fetching members from {source_group.title}...")
-                members = await client.get_participants(source_group)
-                target_members = [user.id for user in await client.get_participants(target_group)]
-
-                for member in members:
-                    if member.bot or member.deleted or member.id in target_members:
-                        continue
-
-                    try:
-                        user = InputPeerUser(member.id, member.access_hash)
-                        await client(InviteToChannelRequest(target_group, [user]))
-                        print(f"Added {member.username or member.id} to {target_group.title}.")
-                    except errors.FloodWaitError as e:
-                        print(f"Flood wait error. Sleeping for {e.seconds} seconds.")
-                        await asyncio.sleep(e.seconds)
-                        continue
-                    except Exception as e:
-                        print(f"Failed to add {member.username or member.id}: {e}")
-                        continue
-
-                    delay = random.randint(*delay_range)
-                    print(f"Waiting for {delay} seconds...")
-                    await asyncio.sleep(delay)
-
+                await client.start(phone=phone_number)
+                print(Fore.GREEN + f"Logged in successfully for session {i}")
+                valid_clients.append(client)
+            except UserDeactivatedBanError:
+                print(Fore.RED + f"Session {i} is banned. Skipping...")
+                logging.warning(f"Session {i} is banned. Skipping...")
+                continue
             except Exception as e:
-                print(f"Error in adding members with {client.session.filename}: {e}")
+                print(Fore.RED + f"Failed to login for session {i}: {str(e)}")
+                logging.error(f"Failed to login for session {i}: {str(e)}")
+                continue
 
-        print("All accounts have processed their tasks. Waiting for next round...")
+        if not valid_clients:
+            print(Fore.RED + "No valid accounts available to proceed.")
+            return
 
-# Main function
-async def main():
-    num_sessions = int(input("How many sessions do you want to log in? "))
-    delay_range = (
-        int(input("Enter minimum delay between adds (in seconds): ")),
-        int(input("Enter maximum delay between adds (in seconds): "))
-    )
+        print(Fore.MAGENTA + "\nChoose an option:")
+        print(Fore.YELLOW + "1. Auto Forwarding (Forward last saved message to all groups)")
+        print(Fore.YELLOW + "2. Auto Reply (Reply to private messages)")
 
-    clients = {}
-    selections = {}
+        option = int(input(Fore.CYAN + "Enter your choice: "))
+        rounds, delay_between_rounds = 0, 0
 
-    # Log in to specified number of accounts
-    for i in range(1, num_sessions + 1):
-        session_name = f'session{i}'
-        credentials = load_credentials(session_name)
+        if option == 1:
+            rounds = int(input(Fore.MAGENTA + "How many rounds should the message be sent? "))
+            delay_between_rounds = int(input(Fore.MAGENTA + "Enter delay (in seconds) between rounds: "))
 
-        if credentials:
-            print(f"Using saved credentials for {session_name}.")
-        else:
-            api_id = int(input(f"Enter API ID for session {i}: "))
-            api_hash = input(f"Enter API Hash for session {i}: ")
-            phone = input(f"Enter phone number for session {i}: ")
-            credentials = {'api_id': api_id, 'api_hash': api_hash, 'phone': phone}
-            save_credentials(session_name, credentials)
+            # Start auto-reply for all clients
+            auto_reply_tasks = [setup_auto_reply(client, client.session.filename) for client in valid_clients]
+            await asyncio.gather(*auto_reply_tasks)
 
-        try:
-            client, groups = await login_and_fetch_groups(session_name, credentials['api_id'], credentials['api_hash'], credentials['phone'])
-            if client:
-                clients[client] = groups
-        except Exception as e:
-            print(f"Failed to log in session {session_name}: {e}")
+            # Forward messages from all valid clients in each round
+            for round_num in range(1, rounds + 1):
+                print(Fore.YELLOW + f"\nStarting round {round_num} for all sessions...")
+                tasks = []
+                for client in valid_clients:
+                    last_message = await get_last_saved_message(client)
+                    if last_message:
+                        tasks.append(forward_messages_to_groups(client, last_message, client.session.filename, 1, 0))
+                await asyncio.gather(*tasks)
+                if round_num < rounds:
+                    print(Fore.CYAN + f"Waiting for {delay_between_rounds} seconds before next round...")
+                    await asyncio.sleep(delay_between_rounds)
 
-    # Select source and target groups for each account
-    for client, groups in clients.items():
-        print("\nAvailable groups:")
-        for idx, group in enumerate(groups, start=1):
-            print(f"{idx}. {group.title}")
+        elif option == 2:
+            print(Fore.GREEN + "Starting Auto Reply...")
+            tasks = [setup_auto_reply(client, client.session.filename) for client in valid_clients]
+            await asyncio.gather(*tasks)
 
-        source_idx = int(input("Select the source group (number): ")) - 1
-        target_idx = int(input("Select the target group (number): ")) - 1
-        selections[client] = (groups[source_idx], groups[target_idx])
+            # Keep the script running to listen for new messages
+            print(Fore.CYAN + "Auto-reply is running. Press Ctrl+C to stop.")
+            while True:
+                await asyncio.sleep(1)
 
-    # Start the member-adding process
-    await add_members(clients, selections, delay_range)
+        for client in valid_clients:
+            await client.disconnect()
 
-    # Disconnect all clients
-    for client in clients:
-        await client.disconnect()
+    except KeyboardInterrupt:
+        print(Fore.YELLOW + "\nScript terminated by user.")
 
 if __name__ == "__main__":
     asyncio.run(main())
