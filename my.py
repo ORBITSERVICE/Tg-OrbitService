@@ -165,8 +165,8 @@ async def pro_leave_groups(client):
             except Exception as leave_error:
                 print(Fore.RED + f"Failed to leave group: {group.name or group.id}: {leave_error}")
 
-        # 1-second delay between testing groups
-        await asyncio.sleep(1)
+        # 2-second delay between testing groups
+        await asyncio.sleep(2)
 
 async def main():
     """Main function to handle user input and execute the script."""
