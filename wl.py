@@ -5,6 +5,7 @@ import logging
 from telethon import TelegramClient, events, errors
 from telethon.errors import UserDeactivatedBanError
 from telethon.tl.functions.messages import GetHistoryRequest, DeleteHistoryRequest
+from telethon.sessions import StringSession
 from colorama import init, Fore
 import pyfiglet
 
@@ -34,17 +35,21 @@ Proofs @LegitProofs99
 [ Message To @OrbitService Only For Run Ads And Buy Telegram And WhatsApp Accounts.. For Other All Otp's Msge to [ https://t.me/otpsellers4  ] Otp Wallah
 """
 
-def save_credentials(session_name, credentials):
+def save_credentials(session_name, api_id, api_hash, session_string):
     path = os.path.join(CREDENTIALS_FOLDER, f"{session_name}.json")
     with open(path, 'w') as f:
-        json.dump(credentials, f)
+        json.dump({
+            'api_id': api_id,
+            'api_hash': api_hash,
+            'session_string': session_string
+        }, f)
 
 def load_credentials(session_name):
     path = os.path.join(CREDENTIALS_FOLDER, f"{session_name}.json")
     if os.path.exists(path):
         with open(path, 'r') as f:
             return json.load(f)
-    return {}
+    return None
 
 def display_banner():
     print(Fore.RED + pyfiglet.figlet_format("Og_Flame"))
@@ -64,35 +69,46 @@ async def auto_reply(client, session_name):
             except Exception as e:
                 logging.error(f"Auto-Reply Error: {str(e)}")
 
-async def forward_messages_to_groups(client, last_message, session_name, group):
+async def forward_with_delay(client, last_message, session_name, group, delay):
     try:
+        await asyncio.sleep(delay)  # Wait for the specified delay
         await client.send_message(group, last_message.message, link_preview=False)
         print(Fore.GREEN + f"Message Sent to {group.title} from {session_name}")
-
     except errors.FloodWaitError as e:
         await asyncio.sleep(e.seconds)
     except Exception as e:
         logging.error(f"Forward Error: {str(e)}")
 
-async def login_and_execute(api_id, api_hash, phone_number, session_name, delay_between_accounts, index):
-    client = TelegramClient(session_name, api_id, api_hash)
-
-    if index > 0:
-        print(Fore.CYAN + f"Waiting {delay_between_accounts} seconds for {session_name}...")
-        await asyncio.sleep(delay_between_accounts * index)
-
+async def initialize_session(session_name, credentials):
     try:
-        await client.start(phone=phone_number)
+        client = TelegramClient(
+            StringSession(credentials['session_string']),
+            credentials['api_id'],
+            credentials['api_hash']
+        )
+        await client.connect()
+
+        if not await client.is_user_authorized():
+            print(Fore.RED + f"Session authorization failed for {session_name}")
+            return None, None
 
         saved_peer = await client.get_input_entity('me')
-        history = await client(GetHistoryRequest(peer=saved_peer, limit=1, offset_id=0, offset_date=None, add_offset=0, max_id=0, min_id=0, hash=0))
+        history = await client(GetHistoryRequest(
+            peer=saved_peer,
+            limit=1,
+            offset_id=0,
+            offset_date=None,
+            add_offset=0,
+            max_id=0,
+            min_id=0,
+            hash=0
+        ))
 
         if not history.messages:
             print(Fore.RED + f"No messages in Saved Messages for {session_name}")
             return None, None
 
         last_message = history.messages[0]
-
         asyncio.create_task(auto_reply(client, session_name))
         return client, last_message
 
@@ -108,39 +124,47 @@ async def main():
 
     try:
         num_sessions = int(input("Enter Number of Sessions: "))
-        active_sessions = []
-
+        action_delay = int(input("Delay between Actions (Seconds): "))
+        
+        active_clients = []
+        
+        # Initialize all sessions immediately
         for i in range(1, num_sessions + 1):
             session_name = f'session{i}'
             credentials = load_credentials(session_name)
-
-            if credentials:
-                print(Fore.GREEN + f"Using Saved Login for {session_name}")
-            else:
-                print(Fore.CYAN + f"Setup {session_name}")
+            
+            if not credentials:
+                print(Fore.CYAN + f"\nSetting up new session: {session_name}")
                 api_id = int(input("API ID: "))
                 api_hash = input("API Hash: ")
-                phone_number = input("Phone Number (with +): ")
-                credentials = {'api_id': api_id, 'api_hash': api_hash, 'phone_number': phone_number}
-                save_credentials(session_name, credentials)
-
-            active_sessions.append((credentials['api_id'], credentials['api_hash'], credentials['phone_number'], session_name))
-
-        delay_between_accounts = int(input("Delay between Sessions (Seconds): "))
-
-        clients = []
-        for index, session in enumerate(active_sessions):
-            api_id, api_hash, phone_number, session_name = session
-            client, last_message = await login_and_execute(api_id, api_hash, phone_number, session_name, delay_between_accounts, index)
+                session_string = input("Session String: ")
+                save_credentials(session_name, api_id, api_hash, session_string)
+                credentials = {
+                    'api_id': api_id,
+                    'api_hash': api_hash,
+                    'session_string': session_string
+                }
+            else:
+                print(Fore.GREEN + f"Using saved session: {session_name}")
+            
+            client, last_message = await initialize_session(session_name, credentials)
             if client:
-                clients.append((client, last_message, session_name))
-
+                active_clients.append((client, last_message, session_name))
+        
+        print(Fore.GREEN + "\nAll sessions initialized. Starting message forwarding...")
+        
+        # Process actions with delays
         while True:
-            for client, last_message, session_name in clients:
+            for index, (client, last_message, session_name) in enumerate(active_clients):
                 async for dialog in client.iter_dialogs():
                     if dialog.is_group:
-                        await forward_messages_to_groups(client, last_message, session_name, dialog.entity)
-                        await asyncio.sleep(delay_between_accounts)
+                        await forward_with_delay(
+                            client,
+                            last_message,
+                            session_name,
+                            dialog.entity,
+                            action_delay if index > 0 else 0  # No delay for first action
+                        )
 
     except KeyboardInterrupt:
         print(Fore.YELLOW + "\nStopped by User")
