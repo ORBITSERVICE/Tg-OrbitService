@@ -26,13 +26,19 @@ logging.basicConfig(
 
 # Updated Auto-Reply Message
 AUTO_REPLY_MESSAGE = """
-🤜This Id Working For @ProOttMaker
+🌟 *Welcome to OrbitService!* 🌟
 
-🫸This Powerful Ads Running By @ProOttMaker
+📢 Admin Support: @OrbitService  
+🛒 Explore Our Store: @OrbitShoppy  
+🔍 See Proofs & Reviews: @OrbitRepss
 
-🤌Ads Hosted by @ProOttMaker
+💬 *Need help or have questions?*  
+👉 We're here to assist you! Feel free to message us anytime.
 
-🤞Thanks For Msge To Us..
+🚀 *Ready to get started?*  
+Check out our store for exclusive deals and services!
+
+Thank you for choosing OrbitService! 😊
 """
 
 def display_banner():
@@ -153,7 +159,7 @@ async def main():
                 string_session = credentials["string_session"]
             else:
                 api_id = int(input(Fore.CYAN + f"Enter API ID for session {i}: "))
-                api_hash = input(Fore.CYAN + f"Enter API hash for session {i}: ")
+                api_hash = input(Fore.CYAN + f"Enter API hash for session {i}: "))
                 string_session = input(Fore.CYAN + f"Enter string session for session {i}: ")
 
                 credentials = {
