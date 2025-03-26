@@ -26,13 +26,19 @@ logging.basicConfig(
 
 # Updated Auto-Reply Message
 AUTO_REPLY_MESSAGE = """
-🤜This Id Working For @ProOttMaker
+🌟 *Welcome to OrbitService!* 🌟
 
-🫸This Powerful Ads Running By @ProOttMaker
+📢 Admin Support: @OrbitService  
+🛒 Explore Our Store: @OrbitShoppy  
+🔍 See Proofs & Reviews: @OrbitRepss
 
-🤌Ads Hosted by @ProOttMaker
+💬 *Need help or have questions?*  
+👉 We're here to assist you! Feel free to message us anytime.
 
-🤞Thanks For Msge To Us..
+🚀 *Ready to get started?*  
+Check out our store for exclusive deals and services!
+
+Thank you for choosing OrbitService! 😊
 """
 
 def display_banner():
@@ -168,7 +174,7 @@ async def main():
             try:
                 await client.start()
                 print(Fore.GREEN + f"Logged in successfully for session {i}")
-                valid_clients.append(client)
+                valid_clients.append((client, session_name))  # Store both client and session name
             except UserDeactivatedBanError:
                 print(Fore.RED + f"Session {i} is banned. Skipping...")
                 logging.warning(f"Session {i} is banned. Skipping...")
@@ -193,16 +199,16 @@ async def main():
             rounds = int(input(Fore.MAGENTA + "How many rounds should the message be sent? "))
             delay_between_rounds = int(input(Fore.MAGENTA + "Enter delay (in seconds) between rounds: "))
 
-            auto_reply_tasks = [setup_auto_reply(client, client.session.filename) for client in valid_clients]
+            auto_reply_tasks = [setup_auto_reply(client, session_name) for client, session_name in valid_clients]
             await asyncio.gather(*auto_reply_tasks)
 
             for round_num in range(1, rounds + 1):
                 print(Fore.YELLOW + f"\nStarting round {round_num} for all sessions...")
                 tasks = []
-                for client in valid_clients:
+                for client, session_name in valid_clients:
                     last_message = await get_last_saved_message(client)
                     if last_message:
-                        tasks.append(forward_messages_to_groups(client, last_message, client.session.filename, 1, 0))
+                        tasks.append(forward_messages_to_groups(client, last_message, session_name, 1, 0))
                 await asyncio.gather(*tasks)
                 if round_num < rounds:
                     print(Fore.CYAN + f"Waiting for {delay_between_rounds} seconds before next round...")
@@ -210,18 +216,21 @@ async def main():
 
         elif option == 2:
             print(Fore.GREEN + "Starting Auto Reply...")
-            tasks = [setup_auto_reply(client, client.session.filename) for client in valid_clients]
+            tasks = [setup_auto_reply(client, session_name) for client, session_name in valid_clients]
             await asyncio.gather(*tasks)
 
             print(Fore.CYAN + "Auto-reply is running. Press Ctrl+C to stop.")
             while True:
                 await asyncio.sleep(1)
 
-        for client in valid_clients:
+        for client, _ in valid_clients:
             await client.disconnect()
 
     except KeyboardInterrupt:
         print(Fore.YELLOW + "\nScript terminated by user.")
+    except Exception as e:
+        print(Fore.RED + f"An error occurred: {str(e)}")
+        logging.error(f"An error occurred: {str(e)}")
 
 if __name__ == "__main__":
     asyncio.run(main())
