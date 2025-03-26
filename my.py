@@ -26,19 +26,13 @@ logging.basicConfig(
 
 # Updated Auto-Reply Message
 AUTO_REPLY_MESSAGE = """
-🌟 *Welcome to OrbitService!* 🌟
+🤜This Id Working For @ProOttMaker
 
-📢 Admin Support: @OrbitService  
-🛒 Explore Our Store: @OrbitShoppy  
-🔍 See Proofs & Reviews: @OrbitRepss
+🫸This Powerful Ads Running By @ProOttMaker
 
-💬 *Need help or have questions?*  
-👉 We're here to assist you! Feel free to message us anytime.
+🤌Ads Hosted by @ProOttMaker
 
-🚀 *Ready to get started?*  
-Check out our store for exclusive deals and services!
-
-Thank you for choosing OrbitService! 😊
+🤞Thanks For Msge To Us..
 """
 
 def display_banner():
@@ -79,56 +73,56 @@ async def get_last_saved_message(client):
         logging.error(f"Failed to retrieve saved messages: {str(e)}")
         return None
 
-async def forward_messages_to_groups(client, last_message, session_num, rounds, delay_between_rounds):
+async def forward_messages_to_groups(client, last_message, session_name, rounds, delay_between_rounds):
     """Forward the last saved message to all groups with a random delay (15-30 seconds) between groups."""
     try:
         dialogs = await client.get_dialogs()
         group_dialogs = [dialog for dialog in dialogs if dialog.is_group]
 
         if not group_dialogs:
-            logging.warning(f"No groups found for session {session_num}.")
+            logging.warning(f"No groups found for session {session_name}.")
             return
 
-        print(Fore.CYAN + f"Found {len(group_dialogs)} groups for session {session_num}")
+        print(Fore.CYAN + f"Found {len(group_dialogs)} groups for session {session_name}")
 
         for round_num in range(1, rounds + 1):
-            print(Fore.YELLOW + f"\nStarting round {round_num} for session {session_num}...")
+            print(Fore.YELLOW + f"\nStarting round {round_num} for session {session_name}...")
 
             for dialog in group_dialogs:
                 group = dialog.entity
                 try:
                     await client.forward_messages(group, last_message)
-                    print(Fore.GREEN + f"Message forwarded to {getattr(group, 'title', 'Unknown')} using session {session_num}")
-                    logging.info(f"Message forwarded to {getattr(group, 'title', 'Unknown')} using session {session_num}")
+                    print(Fore.GREEN + f"Message forwarded to {group.title} using {session_name}")
+                    logging.info(f"Message forwarded to {group.title} using {session_name}")
                 except FloodWaitError as e:
                     print(Fore.RED + f"Rate limit exceeded. Waiting for {e.seconds} seconds.")
                     await asyncio.sleep(e.seconds)
                     await client.forward_messages(group, last_message)
-                    print(Fore.GREEN + f"Message forwarded to {getattr(group, 'title', 'Unknown')} after waiting.")
+                    print(Fore.GREEN + f"Message forwarded to {group.title} after waiting.")
                 except Exception as e:
-                    print(Fore.RED + f"Failed to forward message to {getattr(group, 'title', 'Unknown')}: {str(e)}")
-                    logging.error(f"Failed to forward message to {getattr(group, 'title', 'Unknown')}: {str(e)}")
+                    print(Fore.RED + f"Failed to forward message to {group.title}: {str(e)}")
+                    logging.error(f"Failed to forward message to {group.title}: {str(e)}")
 
                 random_delay = random.randint(15, 30)
                 print(Fore.CYAN + f"Waiting for {random_delay} seconds before the next group...")
                 await asyncio.sleep(random_delay)
 
-            print(Fore.GREEN + f"Round {round_num} completed for session {session_num}.")
+            print(Fore.GREEN + f"Round {round_num} completed for session {session_name}.")
             if round_num < rounds:
                 print(Fore.CYAN + f"Waiting for {delay_between_rounds} seconds before next round...")
                 await asyncio.sleep(delay_between_rounds)
     except Exception as e:
         logging.error(f"Unexpected error in forward_messages_to_groups: {str(e)}")
 
-async def setup_auto_reply(client, session_num):
+async def setup_auto_reply(client, session_name):
     """Set up auto-reply to private messages."""
     @client.on(events.NewMessage(incoming=True))
     async def handler(event):
         if event.is_private:
             try:
                 await event.reply(AUTO_REPLY_MESSAGE)
-                print(Fore.GREEN + f"Replied to {event.sender_id} in session {session_num}")
-                logging.info(f"Replied to {event.sender_id} in session {session_num}")
+                print(Fore.GREEN + f"Replied to {event.sender_id} in session {session_name}")
+                logging.info(f"Replied to {event.sender_id} in session {session_name}")
             except FloodWaitError as e:
                 print(Fore.RED + f"Rate limit exceeded. Waiting for {e.seconds} seconds.")
                 await asyncio.sleep(e.seconds)
@@ -159,7 +153,7 @@ async def main():
                 string_session = credentials["string_session"]
             else:
                 api_id = int(input(Fore.CYAN + f"Enter API ID for session {i}: "))
-                api_hash = input(Fore.CYAN + f"Enter API hash for session {i}: "))
+                api_hash = input(Fore.CYAN + f"Enter API hash for session {i}: ")
                 string_session = input(Fore.CYAN + f"Enter string session for session {i}: ")
 
                 credentials = {
@@ -174,7 +168,7 @@ async def main():
             try:
                 await client.start()
                 print(Fore.GREEN + f"Logged in successfully for session {i}")
-                valid_clients.append((client, i))  # Store both client and session number
+                valid_clients.append(client)
             except UserDeactivatedBanError:
                 print(Fore.RED + f"Session {i} is banned. Skipping...")
                 logging.warning(f"Session {i} is banned. Skipping...")
@@ -199,18 +193,16 @@ async def main():
             rounds = int(input(Fore.MAGENTA + "How many rounds should the message be sent? "))
             delay_between_rounds = int(input(Fore.MAGENTA + "Enter delay (in seconds) between rounds: "))
 
-            # Start auto-reply for all clients
-            auto_reply_tasks = [setup_auto_reply(client, session_num) for client, session_num in valid_clients]
+            auto_reply_tasks = [setup_auto_reply(client, client.session.filename) for client in valid_clients]
             await asyncio.gather(*auto_reply_tasks)
 
-            # Forward messages from all valid clients in each round
             for round_num in range(1, rounds + 1):
                 print(Fore.YELLOW + f"\nStarting round {round_num} for all sessions...")
                 tasks = []
-                for client, session_num in valid_clients:
+                for client in valid_clients:
                     last_message = await get_last_saved_message(client)
                     if last_message:
-                        tasks.append(forward_messages_to_groups(client, last_message, session_num, 1, 0))
+                        tasks.append(forward_messages_to_groups(client, last_message, client.session.filename, 1, 0))
                 await asyncio.gather(*tasks)
                 if round_num < rounds:
                     print(Fore.CYAN + f"Waiting for {delay_between_rounds} seconds before next round...")
@@ -218,22 +210,18 @@ async def main():
 
         elif option == 2:
             print(Fore.GREEN + "Starting Auto Reply...")
-            tasks = [setup_auto_reply(client, session_num) for client, session_num in valid_clients]
+            tasks = [setup_auto_reply(client, client.session.filename) for client in valid_clients]
             await asyncio.gather(*tasks)
 
-            # Keep the script running to listen for new messages
             print(Fore.CYAN + "Auto-reply is running. Press Ctrl+C to stop.")
             while True:
                 await asyncio.sleep(1)
 
-        for client, _ in valid_clients:
+        for client in valid_clients:
             await client.disconnect()
 
     except KeyboardInterrupt:
         print(Fore.YELLOW + "\nScript terminated by user.")
-    except Exception as e:
-        print(Fore.RED + f"\nAn error occurred: {str(e)}")
-        logging.error(f"Main function error: {str(e)}")
 
 if __name__ == "__main__":
     asyncio.run(main())
