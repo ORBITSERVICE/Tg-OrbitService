@@ -4,6 +4,7 @@ import json
 import random
 import logging
 from telethon import TelegramClient, events
+from telethon.sessions import StringSession
 from telethon.errors import UserDeactivatedBanError, FloodWaitError
 from telethon.tl.functions.messages import GetHistoryRequest
 from colorama import init, Fore
@@ -25,13 +26,19 @@ logging.basicConfig(
 
 # Updated Auto-Reply Message
 AUTO_REPLY_MESSAGE = """
-🤜This Id Working For @ProOttMaker
+🌟 *Welcome to OrbitService!* 🌟
 
-🫸This Powerful Ads Running By @ProOttMaker
+📢 Admin Support: @OrbitService  
+🛒 Explore Our Store: @OrbitShoppy  
+🔍 See Proofs & Reviews: @OrbitRepss
 
-🤌Ads Hosted by @ProOttMaker
+💬 *Need help or have questions?*  
+👉 We're here to assist you! Feel free to message us anytime.
 
-🤞Thanks For Msge To Us..
+🚀 *Ready to get started?*  
+Check out our store for exclusive deals and services!
+
+Thank you for choosing OrbitService! 😊
 """
 
 def display_banner():
@@ -39,14 +46,14 @@ def display_banner():
     print(Fore.RED + pyfiglet.figlet_format("Og_Flame"))
     print(Fore.GREEN + "Made by @Og_Flame\n")
 
-# Function to save session credentials
 def save_credentials(session_name, credentials):
+    """Save session credentials to file."""
     path = os.path.join(CREDENTIALS_FOLDER, f"{session_name}.json")
     with open(path, "w") as f:
         json.dump(credentials, f)
 
-# Function to load session credentials
 def load_credentials(session_name):
+    """Load session credentials from file."""
     path = os.path.join(CREDENTIALS_FOLDER, f"{session_name}.json")
     if os.path.exists(path):
         with open(path, "r") as f:
@@ -75,7 +82,6 @@ async def get_last_saved_message(client):
 async def forward_messages_to_groups(client, last_message, session_name, rounds, delay_between_rounds):
     """Forward the last saved message to all groups with a random delay (15-30 seconds) between groups."""
     try:
-        # Fetch all dialogs and filter only groups
         dialogs = await client.get_dialogs()
         group_dialogs = [dialog for dialog in dialogs if dialog.is_group]
 
@@ -88,7 +94,6 @@ async def forward_messages_to_groups(client, last_message, session_name, rounds,
         for round_num in range(1, rounds + 1):
             print(Fore.YELLOW + f"\nStarting round {round_num} for session {session_name}...")
 
-            # Forward message to all groups with a random delay (15-30 seconds) between groups
             for dialog in group_dialogs:
                 group = dialog.entity
                 try:
@@ -104,7 +109,6 @@ async def forward_messages_to_groups(client, last_message, session_name, rounds,
                     print(Fore.RED + f"Failed to forward message to {group.title}: {str(e)}")
                     logging.error(f"Failed to forward message to {group.title}: {str(e)}")
 
-                # Add random delay (15-30 seconds) between groups
                 random_delay = random.randint(15, 30)
                 print(Fore.CYAN + f"Waiting for {random_delay} seconds before the next group...")
                 await asyncio.sleep(random_delay)
@@ -152,25 +156,25 @@ async def main():
             if credentials:
                 api_id = credentials["api_id"]
                 api_hash = credentials["api_hash"]
-                phone_number = credentials["phone_number"]
+                string_session = credentials["string_session"]
             else:
                 api_id = int(input(Fore.CYAN + f"Enter API ID for session {i}: "))
                 api_hash = input(Fore.CYAN + f"Enter API hash for session {i}: ")
-                phone_number = input(Fore.CYAN + f"Enter phone number for session {i}: ")
+                string_session = input(Fore.CYAN + f"Enter string session for session {i}: ")
 
                 credentials = {
                     "api_id": api_id,
                     "api_hash": api_hash,
-                    "phone_number": phone_number,
+                    "string_session": string_session,
                 }
                 save_credentials(session_name, credentials)
 
-            client = TelegramClient(session_name, api_id, api_hash)
+            client = TelegramClient(StringSession(string_session), api_id, api_hash)
 
             try:
-                await client.start(phone=phone_number)
+                await client.start()
                 print(Fore.GREEN + f"Logged in successfully for session {i}")
-                valid_clients.append(client)
+                valid_clients.append((client, session_name))  # Store both client and session name
             except UserDeactivatedBanError:
                 print(Fore.RED + f"Session {i} is banned. Skipping...")
                 logging.warning(f"Session {i} is banned. Skipping...")
@@ -189,24 +193,19 @@ async def main():
         print(Fore.YELLOW + "2. Auto Reply (Reply to private messages)")
 
         option = int(input(Fore.CYAN + "Enter your choice: "))
-        rounds, delay_between_rounds = 0, 0
+        rounds, delay_between_rounds = 100000, 900  # Hardcoded values (100k rounds, 15 min delay)
 
         if option == 1:
-            rounds = int(input(Fore.MAGENTA + "How many rounds should the message be sent? "))
-            delay_between_rounds = int(input(Fore.MAGENTA + "Enter delay (in seconds) between rounds: "))
-
-            # Start auto-reply for all clients
-            auto_reply_tasks = [setup_auto_reply(client, client.session.filename) for client in valid_clients]
+            auto_reply_tasks = [setup_auto_reply(client, session_name) for client, session_name in valid_clients]
             await asyncio.gather(*auto_reply_tasks)
 
-            # Forward messages from all valid clients in each round
             for round_num in range(1, rounds + 1):
                 print(Fore.YELLOW + f"\nStarting round {round_num} for all sessions...")
                 tasks = []
-                for client in valid_clients:
+                for client, session_name in valid_clients:
                     last_message = await get_last_saved_message(client)
                     if last_message:
-                        tasks.append(forward_messages_to_groups(client, last_message, client.session.filename, 1, 0))
+                        tasks.append(forward_messages_to_groups(client, last_message, session_name, 1, 0))
                 await asyncio.gather(*tasks)
                 if round_num < rounds:
                     print(Fore.CYAN + f"Waiting for {delay_between_rounds} seconds before next round...")
@@ -214,19 +213,21 @@ async def main():
 
         elif option == 2:
             print(Fore.GREEN + "Starting Auto Reply...")
-            tasks = [setup_auto_reply(client, client.session.filename) for client in valid_clients]
+            tasks = [setup_auto_reply(client, session_name) for client, session_name in valid_clients]
             await asyncio.gather(*tasks)
 
-            # Keep the script running to listen for new messages
             print(Fore.CYAN + "Auto-reply is running. Press Ctrl+C to stop.")
             while True:
                 await asyncio.sleep(1)
 
-        for client in valid_clients:
+        for client, _ in valid_clients:
             await client.disconnect()
 
     except KeyboardInterrupt:
         print(Fore.YELLOW + "\nScript terminated by user.")
+    except Exception as e:
+        print(Fore.RED + f"An error occurred: {str(e)}")
+        logging.error(f"An error occurred: {str(e)}")
 
 if __name__ == "__main__":
     asyncio.run(main())
