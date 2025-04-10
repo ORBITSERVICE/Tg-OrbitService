@@ -79,58 +79,61 @@ async def get_last_saved_message(client):
         logging.error(f"Failed to retrieve saved messages: {str(e)}")
         return None
 
-async def forward_messages(client, session_name):
+async def forward_messages_to_groups(client, last_message, session_name):
     """Forward the last saved message to all groups with random delays."""
     try:
-        last_message = await get_last_saved_message(client)
-        if not last_message:
-            print(Fore.RED + f"No saved message found for {session_name}")
-            return
-
         dialogs = await client.get_dialogs()
         group_dialogs = [dialog for dialog in dialogs if dialog.is_group]
 
         if not group_dialogs:
-            print(Fore.YELLOW + f"No groups found for {session_name}")
+            print(Fore.YELLOW + f"[{session_name}] No groups found")
             return
 
-        print(Fore.CYAN + f"Found {len(group_dialogs)} groups for {session_name}")
+        print(Fore.CYAN + f"[{session_name}] Found {len(group_dialogs)} groups")
 
         for dialog in group_dialogs:
             group = dialog.entity
             try:
                 await client.forward_messages(group, last_message)
-                print(Fore.GREEN + f"Message forwarded to {group.title}")
-                logging.info(f"Message forwarded to {group.title}")
+                print(Fore.GREEN + f"[{session_name}] Forwarded to {group.title}")
+                logging.info(f"[{session_name}] Forwarded to {group.title}")
             except FloodWaitError as e:
-                print(Fore.RED + f"Waiting {e.seconds} seconds (flood wait)")
+                print(Fore.RED + f"[{session_name}] Flood wait: {e.seconds} seconds")
                 await asyncio.sleep(e.seconds)
                 await client.forward_messages(group, last_message)
+                print(Fore.GREEN + f"[{session_name}] Forwarded after wait to {group.title}")
             except Exception as e:
-                print(Fore.RED + f"Failed to forward to {group.title}: {str(e)}")
+                print(Fore.RED + f"[{session_name}] Failed to forward to {group.title}: {str(e)}")
+                logging.error(f"[{session_name}] Failed to forward to {group.title}: {str(e)}")
 
+            # Random delay between 15-30 seconds
             delay = random.randint(15, 30)
+            print(Fore.CYAN + f"[{session_name}] Waiting {delay} seconds before next group...")
             await asyncio.sleep(delay)
 
     except Exception as e:
-        logging.error(f"Error in forwarding for {session_name}: {str(e)}")
+        print(Fore.RED + f"[{session_name}] Forwarding error: {str(e)}")
+        logging.error(f"[{session_name}] Forwarding error: {str(e)}")
 
-async def auto_reply(client, session_name):
+async def setup_auto_reply(client, session_name):
     """Set up auto-reply to private messages."""
     @client.on(events.NewMessage(incoming=True))
     async def handler(event):
         if event.is_private:
             try:
                 await event.reply(AUTO_REPLY_MESSAGE)
-                print(Fore.GREEN + f"Replied to {event.sender_id}")
+                print(Fore.GREEN + f"[{session_name}] Replied to {event.sender_id}")
+                logging.info(f"[{session_name}] Replied to {event.sender_id}")
             except FloodWaitError as e:
+                print(Fore.RED + f"[{session_name}] Flood wait: {e.seconds} seconds")
                 await asyncio.sleep(e.seconds)
                 await event.reply(AUTO_REPLY_MESSAGE)
             except Exception as e:
-                print(Fore.RED + f"Failed to reply: {str(e)}")
+                print(Fore.RED + f"[{session_name}] Failed to reply: {str(e)}")
+                logging.error(f"[{session_name}] Failed to reply: {str(e)}")
 
 async def run_session(session_name, credentials):
-    """Run a single session with both forwarding and auto-reply."""
+    """Run both forwarding and auto-reply for a session."""
     client = TelegramClient(
         StringSession(credentials["string_session"]),
         credentials["api_id"],
@@ -139,27 +142,28 @@ async def run_session(session_name, credentials):
     
     try:
         await client.start()
-        print(Fore.GREEN + f"{session_name} started successfully")
+        print(Fore.GREEN + f"[{session_name}] Successfully logged in")
         
-        # Run both functions concurrently
-        await asyncio.gather(
-            auto_reply(client, session_name),
-            continuous_forwarding(client, session_name)
-        )
+        # Start auto-reply
+        await setup_auto_reply(client, session_name)
         
+        # Continuous forwarding with 15 minute intervals
+        while True:
+            last_message = await get_last_saved_message(client)
+            if last_message:
+                await forward_messages_to_groups(client, last_message, session_name)
+            else:
+                print(Fore.RED + f"[{session_name}] No saved message found")
+            
+            print(Fore.YELLOW + f"[{session_name}] Waiting 15 minutes before next round...")
+            await asyncio.sleep(900)  # 15 minutes
+            
     except UserDeactivatedBanError:
-        print(Fore.RED + f"{session_name} is banned")
+        print(Fore.RED + f"[{session_name}] Account banned")
     except Exception as e:
-        print(Fore.RED + f"{session_name} error: {str(e)}")
+        print(Fore.RED + f"[{session_name}] Error: {str(e)}")
     finally:
         await client.disconnect()
-
-async def continuous_forwarding(client, session_name):
-    """Continuous forwarding with 15-minute intervals."""
-    while True:
-        await forward_messages(client, session_name)
-        print(Fore.YELLOW + f"{session_name} waiting 15 minutes...")
-        await asyncio.sleep(900)  # 15 minutes
 
 async def main():
     """Main function to handle user input and execute the script."""
@@ -168,7 +172,7 @@ async def main():
     try:
         num_sessions = int(input("Enter number of sessions: "))
         if num_sessions <= 0:
-            print(Fore.RED + "At least 1 session required")
+            print(Fore.RED + "Number must be greater than 0")
             return
 
         tasks = []
@@ -188,11 +192,11 @@ async def main():
 
             tasks.append(run_session(session_name, credentials))
 
-        print(Fore.GREEN + "\nStarting all sessions...")
+        print(Fore.GREEN + "\nStarting all sessions (Auto-Reply + Forwarding)...")
         await asyncio.gather(*tasks)
 
     except KeyboardInterrupt:
-        print(Fore.YELLOW + "\nStopped by user")
+        print(Fore.YELLOW + "\nScript stopped by user")
     except Exception as e:
         print(Fore.RED + f"Error: {str(e)}")
 
