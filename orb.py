@@ -29,14 +29,47 @@ AUTO_REPLY_MESSAGE = "Dm @OrbitService"
 
 # Promotional Message (Updated as per request)
 PROMO_MESSAGE = """
-Cxp [c ^_ p ]zip available at best prize
+ORBIT ADBOT SCRIPT
 
-Just 99 for 30+ Zips 
-Permenent 
-No ban issue
-Ultra save
+🎁 Introducing the Ultimate Telegram Automation Service!
 
-Dm @OrbitService for buy Zips.
+⚡️ Are you tired of manually managing your Telegram groups?
+⚡️ Looking for a fast, efficient, and affordable solution to forward messages, manage accounts, and streamline your workflow?
+
+🔥 Here We Present:
+The Most Advanced Telegram Automation Tool by @OrbitService
+
+💡 Key Features:
+- Auto Forward Messages: Send your saved messages to ALL your groups in just a few clicks.
+- Smart Group Management: Automatically leave groups where messages can't be sent.
+- Custom Rounds & Delays: Choose how many times to forward and set custom delays for maximum safety.
+- Banned Account Handling: Seamlessly skip banned accounts and continue with active ones without interruptions.
+- 24/7 Reliability: Runs non-stop until you manually stop it. Handles internet downtimes effortlessly!
+
+📈 Why Choose Us?
+- Lightning-fast performance.
+- User-friendly and highly customizable.
+- Designed to keep your accounts safe with built-in delay and error handling.
+- Affordable Pricing for individuals and businesses alike!
+
+✔️ Take control of your Telegram management like never before.
+Join the growing community of professionals and businesses using @OrbitService's advanced tools.
+
+❤️ Contact us today to get started!
+Don't miss out - the future of Telegram automation is here.
+
+✔️ Price just 499 INR / $10 (Non-negotiable) - Cheapest on Telegram!
+
+⚠️ Special Feature: Auto Reply Without Premium
+
+▶️ Contact: @OrbitService
+
+👛 Payment Methods Accepted:
+- UPI
+- Crypto
+
+👑 DM: @OrbitService
+⚡️ Proof & Shop: Check Bio of @OrbitService
 """
 
 def display_banner():
