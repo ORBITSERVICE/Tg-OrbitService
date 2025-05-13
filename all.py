@@ -23,11 +23,10 @@ CREDENTIALS_FOLDER = 'sessions'
 os.makedirs(CREDENTIALS_FOLDER, exist_ok=True)
 TARGET_CHANNEL = "https://t.me/OttMakershop"
 
-# Performance Settings
-MAX_CONCURRENT_SESSIONS = 10  # Increased to 10 concurrent sessions
-MESSAGE_CHECK_LIMIT = 10
-BASE_DELAY = 15
-MAX_DELAY = 45
+# Timing Settings
+MIN_DELAY = 15  # Minimum delay between groups
+MAX_DELAY = 30  # Maximum delay between groups
+CYCLE_DELAY = 900  # 15 minutes between cycles
 
 # Set up logging
 logging.basicConfig(
@@ -58,163 +57,144 @@ def load_credentials(session_name):
             return json.load(f)
     return None
 
-async def process_batch(sessions_batch):
-    """Process a batch of sessions concurrently"""
-    tasks = []
-    for session_name, creds in sessions_batch:
-        print(Fore.CYAN + f"\nPreparing {session_name}...")
-        tasks.append(run_session(session_name, creds))
-    await asyncio.gather(*tasks)
-
 async def ensure_channel_joined(client, session_name):
-    """Optimized channel joining with quick verification"""
+    """Ensure joined to target channel with quick verification"""
     try:
+        entity = await client.get_entity(TARGET_CHANNEL)
         try:
-            entity = await client.get_entity(TARGET_CHANNEL)
             # Quick check if already participant
-            try:
-                await client.get_permissions(entity)
-                print(Fore.YELLOW + f"[{session_name}] Already in channel")
-                return entity
-            except ChannelPrivateError:
-                pass
-            
-            await client(functions.channels.JoinChannelRequest(entity))
-            print(Fore.GREEN + f"[{session_name}] Joined channel")
+            await client.get_permissions(entity)
+            print(Fore.YELLOW + f"[{session_name}] Already in channel")
             return entity
-        except FloodWaitError as e:
-            wait = min(e.seconds, 60)  # Cap wait at 60 seconds
-            print(Fore.YELLOW + f"[{session_name}] Flood wait: {wait} sec")
-            await asyncio.sleep(wait)
-            return await ensure_channel_joined(client, session_name)
+        except ChannelPrivateError:
+            try:
+                await client(functions.channels.JoinChannelRequest(entity))
+                print(Fore.GREEN + f"[{session_name}] Joined channel")
+                return entity
+            except FloodWaitError as e:
+                print(Fore.YELLOW + f"[{session_name}] Flood wait: {e.seconds}s")
+                await asyncio.sleep(e.seconds)
+                return await ensure_channel_joined(client, session_name)
     except Exception as e:
-        print(Fore.RED + f"[{session_name}] Join failed: {str(e)}")
+        print(Fore.RED + f"[{session_name}] Channel error: {str(e)}")
         return None
 
 async def get_last_channel_message(client):
-    """Fast message fetching with quick validation"""
+    """Get last non-service message from channel"""
     try:
         entity = await client.get_entity(TARGET_CHANNEL)
-        messages = await client.get_messages(entity, limit=MESSAGE_CHECK_LIMIT)
+        messages = await client.get_messages(entity, limit=10)
         for msg in messages:
             if not isinstance(msg, types.MessageService):
                 return msg
         return None
     except Exception as e:
-        print(Fore.RED + f"Message fetch error: {str(e)}")
+        print(Fore.RED + f"Message error: {str(e)}")
         return None
 
-async def forward_with_retry(client, entity, message, max_retries=2):
-    """Optimized forwarding with quick retries"""
-    for attempt in range(max_retries):
-        try:
-            await client.forward_messages(entity, message)
-            return True
-        except FloodWaitError as e:
-            wait = min(e.seconds, 30)  # Cap at 30 seconds
-            if attempt == max_retries - 1:
-                raise
-            print(Fore.YELLOW + f"Flood wait: {wait} sec (retry {attempt + 1})")
-            await asyncio.sleep(wait)
-        except (ChannelPrivateError, ChatWriteForbiddenError, ChannelInvalidError):
-            return False
-    return False
-
-async def forward_message_to_groups(client, session_name, message):
-    """Optimized group forwarding"""
+async def forward_to_group(client, group, message, session_name):
+    """Forward message to single group with error handling"""
     try:
-        # Get only active group dialogs
-        dialogs = [d for d in await client.get_dialogs() if d.is_group]
+        await client.forward_messages(group, message)
+        print(Fore.GREEN + f"[{session_name}] Sent to {getattr(group, 'title', 'UNKNOWN')}")
+        return True
+    except FloodWaitError as e:
+        print(Fore.YELLOW + f"[{session_name}] Flood wait: {e.seconds}s")
+        await asyncio.sleep(e.seconds)
+        return await forward_to_group(client, group, message, session_name)
+    except (ChannelPrivateError, ChatWriteForbiddenError):
+        print(Fore.YELLOW + f"[{session_name}] No access to group")
+        return False
+    except Exception as e:
+        print(Fore.RED + f"[{session_name}] Forward error: {str(e)}")
+        return False
+
+async def process_groups(client, session_name, message):
+    """Process all groups with proper delays"""
+    try:
+        dialogs = await client.get_dialogs()
+        groups = [d.entity for d in dialogs if d.is_group]
         
-        if not dialogs:
+        if not groups:
             print(Fore.YELLOW + f"[{session_name}] No groups found")
             return
 
-        print(Fore.CYAN + f"[{session_name}] Processing {len(dialogs)} groups")
+        print(Fore.CYAN + f"[{session_name}] Found {len(groups)} groups")
         
-        for dialog in dialogs:
-            group = dialog.entity
-            group_name = getattr(group, 'title', 'UNKNOWN')
+        for group in groups:
+            await forward_to_group(client, group, message, session_name)
+            delay = random.randint(MIN_DELAY, MAX_DELAY)
+            print(Fore.CYAN + f"[{session_name}] Waiting {delay}s...")
+            await asyncio.sleep(delay)
             
-            try:
-                if await forward_with_retry(client, group, message):
-                    print(Fore.GREEN + f"[{session_name}] Sent to {group_name}")
-                else:
-                    print(Fore.YELLOW + f"[{session_name}] No access to {group_name}")
-                
-                await asyncio.sleep(random.randint(BASE_DELAY, MAX_DELAY))
-                
-            except Exception as e:
-                print(Fore.RED + f"[{session_name}] Group error: {str(e)}")
-                continue
-
     except Exception as e:
-        print(Fore.RED + f"[{session_name}] Forwarding failed: {str(e)}")
+        print(Fore.RED + f"[{session_name}] Group processing error: {str(e)}")
 
 async def setup_auto_reply(client, session_name):
-    """Lightweight auto-reply setup"""
+    """Set up auto-reply handler"""
     @client.on(events.NewMessage(incoming=True))
     async def handler(event):
         if event.is_private:
             try:
                 await event.reply(AUTO_REPLY_MESSAGE)
+                print(Fore.GREEN + f"[{session_name}] Replied to DM")
             except FloodWaitError as e:
-                await asyncio.sleep(min(e.seconds, 30))
+                await asyncio.sleep(e.seconds)
                 await event.reply(AUTO_REPLY_MESSAGE)
             except Exception:
                 pass
 
 async def run_session(session_name, credentials):
-    """Optimized session runner"""
+    """Main session runner"""
     client = None
     try:
         client = TelegramClient(
             StringSession(credentials["string_session"]),
             credentials["api_id"],
             credentials["api_hash"],
-            device_model=f"OrbitBot-{random.randint(1000,9999)}",
-            system_version="4.16.30-vxCustom",
-            connection_retries=2,
-            request_retries=2,
-            auto_reconnect=True
+            device_model="Orbit AdBot",
+            system_version="4.16.30-vxCustom"
         )
         
         await client.start()
-        print(Fore.GREEN + f"[{session_name}] Ready")
+        print(Fore.GREEN + f"[{session_name}] Started")
         
+        # Join channel and setup
         if not await ensure_channel_joined(client, session_name):
             return
             
         await setup_auto_reply(client, session_name)
         
+        # Main working loop
         while True:
             try:
-                msg = await get_last_channel_message(client)
-                if msg:
-                    await forward_message_to_groups(client, session_name, msg)
-                await asyncio.sleep(900)  # 15 minute cycles
+                message = await get_last_channel_message(client)
+                if message:
+                    await process_groups(client, session_name, message)
+                print(Fore.YELLOW + f"[{session_name}] Cycle complete, waiting {CYCLE_DELAY//60}min")
+                await asyncio.sleep(CYCLE_DELAY)
             except Exception as e:
-                print(Fore.RED + f"[{session_name}] Cycle error: {str(e)}")
-                await asyncio.sleep(300)
+                print(Fore.RED + f"[{session_name}] Error: {str(e)}")
+                await asyncio.sleep(300)  # Wait 5 minutes on error
                 
     except UserDeactivatedBanError:
         print(Fore.RED + f"[{session_name}] Banned")
     except Exception as e:
-        print(Fore.RED + f"[{session_name}] Failed: {str(e)}")
+        print(Fore.RED + f"[{session_name}] Fatal error: {str(e)}")
     finally:
         if client:
             await client.disconnect()
 
 async def main():
-    """Optimized main flow"""
+    """Main execution flow"""
     display_banner()
     
     try:
         num_sessions = int(input("Enter number of sessions: "))
         if num_sessions <= 0:
-            raise ValueError("Must be > 0")
+            raise ValueError("Positive number required")
                 
-        # Prepare all sessions first
+        # Prepare all sessions
         sessions = []
         for i in range(1, num_sessions + 1):
             session_name = f"session{i}"
@@ -231,21 +211,22 @@ async def main():
                 
             sessions.append((session_name, creds))
 
-        # Process in optimized batches
-        print(Fore.GREEN + f"\nStarting {len(sessions)} sessions in batches of {MAX_CONCURRENT_SESSIONS}...")
-        for i in range(0, len(sessions), MAX_CONCURRENT_SESSIONS):
-            batch = sessions[i:i + MAX_CONCURRENT_SESSIONS]
-            await process_batch(batch)
-            if i + MAX_CONCURRENT_SESSIONS < len(sessions):
-                print(Fore.CYAN + f"\nPreparing next batch...")
-                await asyncio.sleep(5)  # Brief pause between batches
+        # Start all sessions with limited concurrency
+        print(Fore.GREEN + "\nStarting all sessions...")
+        semaphore = asyncio.Semaphore(5)  # Process 5 sessions at a time
+        
+        async def start_session(session_name, creds):
+            async with semaphore:
+                await run_session(session_name, creds)
+        
+        await asyncio.gather(*[start_session(name, creds) for name, creds in sessions])
         
     except ValueError as e:
         print(Fore.RED + f"Input error: {str(e)}")
     except KeyboardInterrupt:
         print(Fore.YELLOW + "\nStopped by user")
     except Exception as e:
-        print(Fore.RED + f"Fatal: {str(e)}")
+        print(Fore.RED + f"Fatal error: {str(e)}")
 
 if __name__ == "__main__":
     try:
